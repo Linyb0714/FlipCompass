@@ -1,0 +1,18 @@
+key: today
+bind:
+  today: $provider.thoughts.today
+layout:
+  type: vstack
+  children:
+    - type: card
+      title: 记录一条
+      subtitle: 今天有什么想说的
+      children:
+        - type: text-editor
+          field: thought
+          placeholder: 一两句话即可
+    - type: button
+      label: 保存
+      action:
+        type: submit
+        form: thought

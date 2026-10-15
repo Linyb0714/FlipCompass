@@ -1,0 +1,16 @@
+key: coupon
+bind:
+  coupons: $provider.hub.coupons
+layout:
+  type: list
+  items: $provider.hub.coupons
+  template:
+    type: card
+    title: ${item.title}
+    subtitle: ${item.expire}
+    children:
+      - type: text
+        value: ${item.code}
+        style:
+          font: headline
+          color: orange

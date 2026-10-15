@@ -1,0 +1,12 @@
+key: today
+bind:
+  today: $provider.games.today
+layout:
+  type: vstack
+  children:
+    - type: card
+      title: 今日推荐
+      subtitle: 每日随机一局
+      children:
+        - type: countdown-card
+          field: $provider.games.today.deadline

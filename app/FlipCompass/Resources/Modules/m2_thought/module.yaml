@@ -1,0 +1,9 @@
+moduleKey: m2_thought
+displayName: 今天的想法
+version: "0.4.1"
+pages:
+  - today
+  - review
+network:
+  endpoint: null
+  note: "一期未启用"

@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>FlipCompass · U2 核心界面原型 V0.3.1</title>
+<style>
+/* ============================================================
+   FlipCompass UX Prototype V0.3.1 · U2 核心界面 · 一二级细化
+   V0.3.1 变更（用户反馈修复，全局约束适用四模块）：
+   ① 拖动跟手重构：吸附式——焦点卡始终精确框住一个条目格位
+      （半格吸附、越拖越跨格，全程对齐元素，绝非任意中位偏移）；
+      仅按住拖动（pressed）才触发，修复桌面 hover 未按下时
+      dragMoved 残留导致焦点乱飞的 bug；吸附切换自带 .18s 滑移动画
+   ② 单点空白 = 确认当前选中（focusPulse 转场确认感，不导航）；
+      点击已选中条目正文 = 同确认（pulse，不进入）
+   ③ 吃边与样式：焦点卡外光晕改短下偏（左右不再被 clip 裁切）；
+      选中条目左侧加模块色 accent bar（列的 item 左右样式明确）
+   其余全续 V0.3.0（跟随式焦点/单点选中/324 宽/无位移缩放）
+   + V0.2.X 封存体系（待机/转环/球模式/轮播/天气/胶囊/双击返回）
+   设计tokens: iOS系统四色 | 7px尺度 | 液态玻璃 | 无倒影
+   ============================================================ */
+:root{
+  --o:#FF9500; --p:#AF52DE; --g:#34C759; --y:#FFCC00;
+  --ink:#1C1C1E; --ink2:#8E8E93; --ink3:#C7C7CC;
+  --bg:#F2F2F7; --line:rgba(60,60,67,.09);
+  --ok:#22c55e; --bad:#f5222d;
+  --r-card:21px; --sp:14px; --sp2:28px;
+  --spring:cubic-bezier(.32,.72,.28,1);
+  --bounce:cubic-bezier(.3,1.45,.45,1);
+  font-family:"PingFang SC",-apple-system,"SF Pro SC","Helvetica Neue",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{background:#0E1013;color:#fff;-webkit-user-select:none;user-select:none}
+.num{font-family:"SF Pro Rounded",ui-rounded,system-ui,sans-serif;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- 原型chrome ---------- */
+#app{height:100%;display:flex;flex-direction:column;align-items:center}
+.proto-bar{width:100%;display:flex;align-items:center;justify-content:space-between;
+  padding:12px 20px 8px;max-width:900px}
+.proto-bar .t{font-size:13px;color:#9aa0a6;letter-spacing:.5px}
+.proto-bar .t b{color:#e8eaed;font-weight:600}
+#screen-name{font-size:12px;color:#0E1013;background:#e8eaed;border-radius:999px;padding:4px 12px;font-weight:600}
+.viewport-wrap{flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0}
+.scaler{transform-origin:center center}
+.stage{position:relative;width:390px;height:844px;background:#fff;border-radius:54px;overflow:hidden;
+  box-shadow:0 0 0 10px #1d2025,0 0 0 12px #33383e,0 30px 80px rgba(0,0,0,.55);}
+.orient-caption{font-size:12px;color:#6b7075;margin-top:10px;text-align:center;letter-spacing:.4px;display:none}
+@media (min-width:700px){.orient-caption{display:block}}
+.simbar{display:flex;gap:8px;padding:12px 10px calc(14px + env(safe-area-inset-bottom));flex-wrap:wrap;justify-content:center}
+.simbar button{border:none;border-radius:999px;padding:8px 15px;font-size:13px;font-weight:600;cursor:pointer;
+  color:#fff;background:#2a2e34;letter-spacing:.3px;transition:transform .15s var(--spring);font-family:inherit}
+.simbar button:active{transform:scale(.94)}
+.simbar button.on{background:#e8eaed;color:#0E1013}
+.simbar button.co{box-shadow:inset 0 0 0 2px var(--o)}
+.simbar button.cp{box-shadow:inset 0 0 0 2px var(--p)}
+.simbar button.cg{box-shadow:inset 0 0 0 2px var(--g)}
+.simbar button.cy{box-shadow:inset 0 0 0 2px var(--y)}
+
+/* ---------- 屏幕通用 + 定向进出（v0.3 核心） ---------- */
+.screen{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .18s;z-index:1}
+.screen.active{opacity:1;pointer-events:auto;z-index:2}
+/* V0.2.1：方位入场（渐显 + 从各自方位滑入 + 到位轻微回弹）
+   待机→模块 & 模块→模块 同用：M1自上/M2自下/M3自左/M4自右 */
+.screen.in-up{z-index:3;animation:inUp .46s var(--bounce) both}
+.screen.in-dn{z-index:3;animation:inDn .46s var(--bounce) both}
+.screen.in-lf{z-index:3;animation:inLf .46s var(--bounce) both}
+.screen.in-rt{z-index:3;animation:inRt .46s var(--bounce) both}
+@keyframes inUp{from{opacity:0;transform:translateY(-46%)}62%{opacity:1;transform:translateY(1.8%)}100%{opacity:1;transform:none}}
+@keyframes inDn{from{opacity:0;transform:translateY(46%)}62%{opacity:1;transform:translateY(-1.8%)}100%{opacity:1;transform:none}}
+@keyframes inLf{from{opacity:0;transform:translateX(-46%)}62%{opacity:1;transform:translateX(1.6%)}100%{opacity:1;transform:none}}
+@keyframes inRt{from{opacity:0;transform:translateX(46%)}62%{opacity:1;transform:translateX(-1.6%)}100%{opacity:1;transform:none}}
+/* 朝自己方向滑出 */
+.screen.out-up{z-index:2;animation:outUp .4s cubic-bezier(.5,0,.8,.5) both}
+.screen.out-dn{z-index:2;animation:outDn .4s cubic-bezier(.5,0,.8,.5) both}
+.screen.out-lf{z-index:2;animation:outLf .4s cubic-bezier(.5,0,.8,.5) both}
+.screen.out-rt{z-index:2;animation:outRt .4s cubic-bezier(.5,0,.8,.5) both}
+@keyframes outUp{to{transform:translateY(-56%);opacity:0}}
+@keyframes outDn{to{transform:translateY(56%);opacity:0}}
+@keyframes outLf{to{transform:translateX(-56%);opacity:0}}
+@keyframes outRt{to{transform:translateX(56%);opacity:0}}
+.module{background:linear-gradient(178deg,#fff 30%,var(--tint,#f6f6f8))}
+.module.tint-o{--mc:var(--o);--tint:#FFF6EC}
+.module.tint-p{--mc:var(--p);--tint:#F8F4FE}
+.module.tint-g{--mc:var(--g);--tint:#F0FAF2}
+.module.tint-y{--mc:var(--y);--tint:#FFFAE8}
+.screen.arrive .item{animation:fadeUp .42s var(--spring) both;animation-delay:calc(120ms + var(--i,0)*35ms)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
+
+/* ---------- 待机屏 v0.8：三段式定位（用户反馈 U2.8） ----------
+   几何（390×844，含 iOS 安全区 59/34）：罗盘环固定视觉中心 y=397（环外沿 277~517）
+   上空白带 59~277（高218，中点168）→ 日期+时钟组中心 = 168
+   下空白带 517~810（高293，中点663）→ 提醒+提示语组中心 = 663
+   每段内容都落在自己段落的正中间（替代 v0.7 整体居中堆叠）
+   ⚠️ 不得覆盖 .screen 的 absolute/inset（保持全屏）——否则容器高度塌缩
+   + overflow:hidden 裁掉全部内容（v0.8 首版 bug，2026-10-12 已修复） */
+#scr-idle{background:#fff;overflow:hidden}
+/* 液态环境光斑（缓慢漂移 + 缓慢变色的轻度动画） */
+.blob{position:absolute;border-radius:50%;opacity:.15;pointer-events:none;z-index:0}
+.bo{width:250px;height:250px;background:var(--o);left:7%;top:5%;animation:driftA 46s ease-in-out infinite alternate}
+.bp{width:230px;height:230px;background:var(--p);right:6%;top:8%;animation:driftB 54s ease-in-out infinite alternate}
+.bg2{width:240px;height:240px;background:var(--g);left:4%;bottom:7%;animation:driftC 50s ease-in-out infinite alternate}
+.by{width:250px;height:250px;background:var(--y);right:7%;bottom:4%;animation:driftD 58s ease-in-out infinite alternate}
+@keyframes driftA{
+  0%{transform:translate(0,0) scale(1);filter:blur(46px) hue-rotate(0deg)}
+  50%{filter:blur(46px) hue-rotate(20deg)}
+  100%{transform:translate(24px,17px) scale(1.08);filter:blur(46px) hue-rotate(42deg)}}
+@keyframes driftB{
+  0%{transform:translate(0,0) scale(1);filter:blur(46px) hue-rotate(0deg)}
+  50%{filter:blur(46px) hue-rotate(-18deg)}
+  100%{transform:translate(-21px,22px) scale(1.05);filter:blur(46px) hue-rotate(-38deg)}}
+@keyframes driftC{
+  0%{transform:translate(0,0) scale(1);filter:blur(46px) hue-rotate(0deg)}
+  50%{filter:blur(46px) hue-rotate(22deg)}
+  100%{transform:translate(23px,-19px) scale(1.07);filter:blur(46px) hue-rotate(46deg)}}
+@keyframes driftD{
+  0%{transform:translate(0,0) scale(1);filter:blur(46px) hue-rotate(0deg)}
+  50%{filter:blur(46px) hue-rotate(-20deg)}
+  100%{transform:translate(-24px,-15px) scale(1.04);filter:blur(46px) hue-rotate(-42deg)}}
+.idle-inner{position:absolute;inset:0;z-index:1}
+.idle-zone{position:absolute;left:0;right:0;display:flex;flex-direction:column;align-items:center}
+/* 上段：日期+天气+时钟（组中心 = 上空白带中点 168；V0.2.5 加天气行 +22px → top 108→96） */
+.idle-zone.top{top:96px}
+/* 罗盘：钉在视觉中心（环外沿 277~517） */
+.idle-zone.mid{top:397px;transform:translateY(-50%)}
+/* 下段：提醒+提示（V0.2.5 ②：4 条胶囊占半行多 → flex-wrap 换行；组变高 → top 629→598）
+   换行原则：一行放得下就同行（当前文案每个 >195px 半行多，两枚+gap>390 → 每枚独行成列；
+   若文案变短自动回到横排——布局自适应不需 JS 介入 */
+.idle-zone.bot{top:598px}
+.idle-date{font-size:15px;color:var(--ink2);letter-spacing:4px;font-weight:500}
+/* V0.2.5 ①：城市·天气温度行（日期下方；静态无动画——延续 V0.2.3 时间静止原则）
+   原型 mock：city='福州' cond='晴' temp=26；真机：CLLocationManager 反地理编码城市 +
+   WeatherKit(backgroundColor 不适用，取 condition/temperature) 自动刷新（15min/前台切换）。 */
+.idle-weather{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2);
+  letter-spacing:1.5px;margin-top:5px;font-weight:500}
+.idle-weather .w-sep{color:var(--ink3)}
+.idle-weather .w-ic{font-size:14px;line-height:1}
+.idle-weather .num{font-size:14px;color:var(--ink2);letter-spacing:.2px}
+.idle-clock{font-size:92px;font-weight:600;letter-spacing:-2.5px;color:var(--ink);line-height:1.04;margin-top:3px}
+/* 罗盘：宽 240 环不变，高上下捑开至 280（±20）适配机型 */
+.compass{position:relative;width:240px;height:280px;margin:20px 0 20px}
+/* 中间元素：固定正圆、绝对居中（容器 240×280 只是外部撑开留白，不影响环） */
+/* 旋转层架构：spin 层一律 margin 居中（不占 transform），JS 内联 rotate 只放 spin 层；
+   元素自身动画放内层——各占各的 transform，互不覆盖（V0.2.1 教训） */
+.compass .ticks-spin{position:absolute;width:240px;height:240px;left:50%;top:50%;margin:-120px 0 0 -120px;border-radius:50%;will-change:transform}
+.compass .ticks{position:absolute;inset:0;border-radius:50%;
+  background:repeating-conic-gradient(from 0deg,rgba(60,60,67,.14) 0deg .9deg,transparent .9deg 15deg);
+  -webkit-mask:radial-gradient(closest-side,transparent 92.5%,#000 93%);
+          mask:radial-gradient(closest-side,transparent 92.5%,#000 93%);
+  animation:spinSlow 150s linear infinite}
+@keyframes spinSlow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+/* V0.2.4：轨迹环旋转层（.ring-spin 与 .ticks-spin 同角度滚动；尺寸同为 240 margin 居中） */
+.compass .ring-spin{position:absolute;width:240px;height:240px;left:50%;top:50%;margin:-120px 0 0 -120px;border-radius:50%;will-change:transform}
+.compass .ring{position:absolute;width:180px;height:180px;left:50%;top:50%;margin:-90px 0 0 -90px;border-radius:50%;border:1.5px solid rgba(60,60,67,.13);
+  animation:ringBreath 5s ease-in-out infinite;
+  transition:border-color .22s ease,border-width .22s ease,box-shadow .22s ease,opacity .22s ease}
+@keyframes ringBreath{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.03);opacity:1}}
+/* V0.2.4：环上游标（转环激活时浮现，随环滚动——滚动量的可见标记，位于 180 环线 12 点位） */
+.compass .ring-mark{position:absolute;left:calc(50% - 3.5px);top:26.5px;width:7px;height:7px;border-radius:50%;
+  background:#3C3C43;opacity:0;transform:scale(.4);pointer-events:none;
+  transition:opacity .18s ease,transform .22s var(--spring)}
+/* V0.2.4 ③：转环激活态（.ring-live 挂 .compass，按住环带时）——环被「唤醒」：
+   环线加深加粗 + 外圈光晕 + 停呼吸；刻度同步加深；游标浮现。让用户明确看到环已激活随指滚动 */
+.compass.ring-live .ring{border-color:rgba(60,60,67,.42);border-width:2px;
+  box-shadow:0 0 0 6px rgba(60,60,67,.05),inset 0 0 14px rgba(60,60,67,.06);
+  animation:none;opacity:1}
+.compass.ring-live .ticks{background:repeating-conic-gradient(from 0deg,rgba(60,60,67,.32) 0deg .9deg,transparent .9deg 15deg)}
+.compass.ring-live .ring-mark{opacity:.66;transform:scale(1)}
+/* v0.9 ②：圆心幽灵指针球（iOS 输入法式拖尾的载体）
+   静止 = 待机呼吸玻璃球；滑动 = 移向滑动方向 + 主题色发光 + 幽灵回声拖尾 */
+.ghost-dot{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px;border-radius:50%;z-index:3;
+  background:linear-gradient(150deg,rgba(255,255,255,.94),rgba(255,255,255,.55));
+  -webkit-backdrop-filter:blur(8px) saturate(1.6);backdrop-filter:blur(8px) saturate(1.6);
+  border:1px solid rgba(255,255,255,.92);
+  box-shadow:0 3px 9px rgba(31,26,20,.16);
+  transition:transform .34s var(--bounce),box-shadow .25s ease;
+  pointer-events:none}
+/* 静止呼吸放在 ::after 光晕（不占用主元素 transform，滑动位移才能生效） */
+.ghost-dot::after{content:"";position:absolute;inset:-7px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.55),transparent 68%);
+  animation:ghostHalo 4s ease-in-out infinite}
+@keyframes ghostHalo{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.4);opacity:.95}}
+/* 拖尾态：跟手（linear）+ 目标模块色发光；光晕隐藏避免干扰 */
+.ghost-dot.trail{box-shadow:0 3px 9px rgba(31,26,20,.16),0 0 22px 7px var(--gc,transparent);
+  transition:transform .05s linear,box-shadow .25s ease}
+.ghost-dot.trail::after{display:none}
+/* V0.2.3 ②：刻度 tick 脉冲（每跨一个刻度 15° 播一次；真机 = UIImpactFeedbackGenerator(.rigid) 轻震）
+   放 ::before（主元素 transform 被拖动位移占用、::after 被光晕占用，不能占用主 transform） */
+.ghost-dot::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:var(--gc,rgba(60,60,67,.25));opacity:0;pointer-events:none}
+.ghost-dot.ticked::before{animation:dotTick .18s ease-out}
+@keyframes dotTick{0%{opacity:.6;transform:scale(.7)}100%{opacity:0;transform:scale(2)}}
+/* 幽灵回声（渐隐残影） */
+.ghost-echo{position:absolute;left:50%;top:50%;width:15px;height:15px;margin:-7.5px;border-radius:50%;
+  background:var(--gc);opacity:.5;z-index:2;pointer-events:none;
+  animation:ghostFade .5s ease-out forwards}
+@keyframes ghostFade{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(.22)}}
+/* v0.9：圆心由 ghost-dot 担纲（原 center-dot 已移除） */
+/* 液态玻璃方向色卡：外移（离圆心 125，卡体完全在环外侧留出净空），四向对称，环样式不动 */
+.gchip{position:absolute;--tf:translate(-50%,-50%);transform:var(--tf);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;z-index:2}
+.gchip.up{top:calc(50% - 125px);left:50%}
+.gchip.dn{top:calc(50% + 125px);left:50%}
+.gchip.lf{left:calc(50% - 125px);top:50%}
+.gchip.rt{left:calc(50% + 125px);top:50%}
+.gc-in{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-width:58px;min-height:58px;padding:8px 11px;border-radius:18px;
+  background:linear-gradient(150deg,rgba(255,255,255,.74),rgba(255,255,255,.36));
+  -webkit-backdrop-filter:blur(16px) saturate(1.7);backdrop-filter:blur(16px) saturate(1.7);
+  border:1px solid rgba(255,255,255,.82);
+  box-shadow:0 7px 18px rgba(31,26,20,.10),inset 0 1px 1px rgba(255,255,255,.95),inset 0 -6px 14px rgba(255,255,255,.42);
+  position:relative;overflow:hidden;
+  animation:chipPop .55s var(--bounce) both,chipFloat 5.5s ease-in-out .9s infinite alternate;
+  transition:transform .2s var(--bounce),box-shadow .3s}
+.gchip:active .gc-in{transform:scale(.92)}
+/* 玻璃上的流光扫过 */
+.gc-in::after{content:"";position:absolute;inset:-30%;
+  background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.55) 50%,transparent 58%);
+  background-size:250% 100%;animation:sheen 6.5s ease-in-out infinite;pointer-events:none}
+.gchip:nth-of-type(2) .gc-in::after{animation-delay:1.6s}
+.gchip:nth-of-type(3) .gc-in::after{animation-delay:3.2s}
+.gchip:nth-of-type(4) .gc-in::after{animation-delay:4.8s}
+@keyframes sheen{0%{background-position:200% 0}55%,100%{background-position:-80% 0}}
+.gi-f{font-size:21px;font-weight:700;color:var(--dc);line-height:1;
+  text-shadow:0 0 13px color-mix(in srgb,var(--dc) 55%,transparent)}
+.gl{font-size:9.5px;color:#7c7c82;letter-spacing:1.5px;font-weight:500}
+@keyframes chipPop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+@keyframes chipFloat{from{transform:translateY(-2.5px)}to{transform:translateY(3px)}}
+/* 进入时：色卡弹射 */
+.gchip.launch{animation:chipLaunch .62s var(--bounce)}
+@keyframes chipLaunch{0%{transform:var(--tf) scale(1)}34%{transform:var(--tf) scale(1.24)}100%{transform:var(--tf) scale(1)}}
+/* 回来时：色卡落座 */
+.gchip.settle{animation:chipSettle .58s var(--bounce)}
+@keyframes chipSettle{0%{transform:var(--tf) scale(1.16)}55%{transform:var(--tf) scale(.93)}100%{transform:var(--tf) scale(1)}}
+/* 提醒胶囊（轻玻璃）V0.2.5 ②：flex-wrap 换行（gap=行列 14；半行多文案容不下一行两枚） */
+.idle-reminders{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin-top:2px}
+.rem-pill{display:flex;align-items:center;gap:7px;font-size:13px;color:#55555c;
+  background:linear-gradient(150deg,rgba(255,255,255,.72),rgba(255,255,255,.42));
+  -webkit-backdrop-filter:blur(12px) saturate(1.5);backdrop-filter:blur(12px) saturate(1.5);
+  border:1px solid rgba(255,255,255,.8);padding:8px 15px;border-radius:999px;
+  box-shadow:0 4px 12px rgba(31,26,20,.07),inset 0 1px 0 rgba(255,255,255,.9)}
+.rem-pill i{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.rem-pill i.o{background:var(--o)}.rem-pill i.p{background:var(--p)}
+.rem-pill i.g{background:var(--g)}.rem-pill i.y{background:var(--y)}
+/* V0.2.2 ②：底部提示词上下翻动（翻牌轮播） */
+.idle-hint-wrap{height:24px;margin-top:13px;perspective:300px}
+.idle-hint-flip{font-size:12px;color:var(--ink3);letter-spacing:1.2px;line-height:24px;backface-visibility:hidden}
+.idle-hint-flip.out{animation:flipOut .44s ease-in both}
+.idle-hint-flip.in{animation:flipIn .44s ease-out both}
+@keyframes flipOut{from{transform:rotateX(0);opacity:1}to{transform:rotateX(-92deg);opacity:0}}
+@keyframes flipIn{from{transform:rotateX(92deg);opacity:0}to{transform:rotateX(0);opacity:1}}
+/* 回到待机的轻入场 */
+.idle-ret .gc-in{animation:chipPop .5s var(--bounce) both,chipFloat 5.5s ease-in-out .8s infinite alternate}
+/* 初次入场编排 */
+.enter-c{animation:enterPop .8s .16s var(--spring) both}
+.enter-u{animation:enterUp .7s calc(.3s + var(--k,0)*100ms) var(--spring) both}
+@keyframes enterUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes enterPop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .ticks,.ring,.blob,.gc-in,.gc-in::after,.ghost-dot::after,.ghost-dot::before,.idle-hint-flip{animation:none!important}
+  .focus-card{transition:none!important;animation:none!important}
+  .enter-c,.enter-u{animation-duration:.01ms!important;animation-delay:0ms!important}
+}
+
+/* ---------- 模块头/dots/hint ---------- */
+.mod-head{display:flex;align-items:center;gap:14px;padding:0 0 16px;margin:0 12px}
+.mod-ic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  font-size:22px;color:#fff;font-weight:600;flex:none;box-shadow:0 7px 16px rgba(0,0,0,.13)}
+.mi-o{background:linear-gradient(145deg,#FFAE4D,var(--o))}
+.mi-p{background:linear-gradient(145deg,#C77BF0,var(--p))}
+.mi-g{background:linear-gradient(145deg,#5FD878,var(--g))}
+.mi-y{background:linear-gradient(145deg,#FFDA4D,var(--y))}
+.mod-title h1{font-size:23px;font-weight:700;color:var(--ink)}
+.mod-title span{font-size:12.5px;color:var(--ink2)}
+.head-chip{margin-left:auto;font-size:12px;font-weight:600;color:var(--mc);
+  background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+/* V0.3.0 ③④：clip 内缩进 12（条目 324 宽 + 首末条光晕安全边）；position:relative 承载浮动焦点卡 */
+.pager-clip{position:relative;overflow:hidden;flex:1;min-height:0;padding:0 12px}
+.pager{display:flex;height:100%;transition:transform .36s var(--spring)}
+.page{flex:0 0 100%;width:100%;padding:10px 0 14px;display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.dots{display:flex;gap:7px;justify-content:center;padding:9px 0 3px}
+.dots i{width:7px;height:7px;border-radius:999px;background:var(--ink3);opacity:.4;transition:.25s}
+.dots i.on{background:var(--mc);opacity:1;width:21px}
+.nav-hint{text-align:center;font-size:11px;color:var(--ink3);padding-bottom:6px;letter-spacing:.4px}
+
+/* ---------- 卡片体系 ---------- */
+.item{position:relative;background:#fff;border-radius:var(--r-card);border:1.5px solid transparent;
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px rgba(0,0,0,.05);
+  transition:box-shadow .28s,border-color .2s,background-color .25s;cursor:pointer}
+/* V0.3.0 ①④：选中不再位移/缩放条目本体（吃边切割根因移除）；抬升深度由焦点卡承担 */
+.item.sel{border-color:color-mix(in srgb,var(--mc) 55%,transparent);
+  background:color-mix(in srgb,var(--mc) 3%,#fff)}
+/* V0.3.1 ③：选中条目左侧 accent bar（模块色 4px 竖条，上下 22% 避开圆角弧）——
+   列式条目选中态不再只依赖边框色，左右样式明确 */
+.item.sel::before{content:"";position:absolute;left:0;top:22%;bottom:22%;width:4px;
+  border-radius:0 4px 4px 0;background:var(--mc);opacity:.9}
+/* V0.3.0 ①：浮动焦点卡——每模块一枚挂 pager-clip；选中变化 = 焦点卡位移跟随
+   （.34s 弹簧滑移 + 尺寸morph），不再是条目类的显示/隐藏切换。
+   拖动中 focusLive() 实时跟手（transition 置 none）；切分组后 focusPos()
+   自动迁移（x 取对称内缩常量，不受 pager 过渡中帧影响） */
+/* V0.3.1 ③：光晕短下偏（0 6px 14px，左右少量溢出在 clip 12px 安全边内不被裁）；
+   描边 border-box 画在卡内沿，零外溢。配合 pulse scale 1.016（±2.6px）仍在边内 */
+.focus-card{position:absolute;left:0;top:0;border-radius:23px;pointer-events:none;z-index:3;opacity:0;
+  border:2px solid rgba(255,255,255,.97);
+  background:linear-gradient(150deg,rgba(255,255,255,.34),rgba(255,255,255,.07));
+  box-shadow:0 6px 14px color-mix(in srgb,var(--mc) 30%,rgba(31,26,20,.12)),0 2px 4px rgba(31,26,20,.06);
+  transition:transform .34s var(--spring),width .34s var(--spring),height .34s var(--spring),opacity .2s ease}
+.focus-card.pulse{animation:focusPulse .5s var(--bounce)}
+@keyframes focusPulse{0%{scale:1}38%{scale:1.016}100%{scale:1}}
+.task{display:flex;align-items:center;gap:14px;padding:17px 18px}
+.tcheck{width:28px;height:28px;border-radius:50%;border:2px solid var(--ink3);flex:none;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;transition:.25s}
+.task.done .tcheck{background:var(--mc);border-color:var(--mc)}
+.task.done .tk-t{color:var(--ink2)}
+.tk-t{font-size:16.5px;font-weight:600;color:var(--ink)}
+.tk-s{font-size:12px;color:var(--ink2);margin-top:3px}
+.tk-go{margin-left:auto;color:var(--ink3);font-size:17px;transition:.22s;padding:16px 4px 16px 18px;cursor:pointer}
+.item.sel .tk-go{color:var(--mc);transform:translateX(3px)}
+.tk-done-time{margin-left:auto;font-size:12px;color:var(--mc);font-weight:600}
+.stat-row{display:flex;gap:14px}
+.stat{flex:1;background:#fff;border-radius:var(--r-card);padding:15px 14px;text-align:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px rgba(0,0,0,.05)}
+.stat .v{font-size:24px;color:var(--ink)}
+.stat .v em{font-style:normal;font-size:14px;color:var(--ink2)}
+.stat .l{font-size:11.5px;color:var(--ink2);margin-top:3px}
+.heat{background:#fff;border-radius:var(--r-card);padding:17px 18px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px rgba(0,0,0,.05)}
+.heat h4{font-size:13.5px;color:var(--ink);font-weight:600;margin-bottom:12px;display:flex;justify-content:space-between}
+.heat h4 span{color:var(--ink2);font-weight:400;font-size:12px}
+.heat-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:7px}
+.heat-grid i{aspect-ratio:1;border-radius:4px;background:var(--o);opacity:var(--a,.1)}
+.new-card{border:1.5px dashed var(--ink3);border-radius:var(--r-card);display:flex;align-items:center;justify-content:center;
+  gap:9px;padding:21px;color:var(--ink2);font-size:15px;font-weight:600;background:rgba(255,255,255,.6);cursor:pointer;transition:.2s}
+.new-card:active{transform:scale(.97)}
+.row-item{display:flex;align-items:center;gap:12px;padding:15px 18px}
+.row-item .bar{width:16px;height:3px;border-radius:2px;background:var(--ink3);flex:none}
+.encourage{font-size:12.5px;color:var(--ink2);text-align:center;padding:3px 0 7px}
+
+/* ---------- M2 ---------- */
+.compose-card{padding:21px 18px;display:flex;align-items:center;gap:12px;border:1.5px dashed color-mix(in srgb,var(--mc) 50%,transparent);
+  background:color-mix(in srgb,var(--mc) 5%,#fff)}
+.compose-card .pi{width:34px;height:34px;border-radius:11px;background:var(--mc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.compose-card .t{font-size:16px;font-weight:600;color:var(--ink)}
+.compose-card .s{font-size:11.5px;color:var(--ink2);margin-top:2px}
+.th{display:flex;gap:12px;padding:16px 18px;align-items:flex-start}
+.th-time{font-size:12px;color:var(--ink2);min-width:39px;padding-top:3px}
+.th-body{flex:1}
+.th-text{font-size:15px;color:var(--ink);line-height:1.45}
+.mood{display:inline-block;font-size:11px;font-weight:600;color:var(--mc);
+  background:color-mix(in srgb,var(--mc) 10%,transparent);border-radius:999px;padding:3px 9px;margin-top:8px}
+.th-dot{width:7px;height:7px;border-radius:50%;background:var(--mc);opacity:.5;margin-top:7px;flex:none}
+.month-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:14px;color:var(--ink)}
+.month-nav b{color:var(--ink);font-weight:600}
+.month-nav span{color:var(--ink3)}
+
+/* ---------- M3/M4 ---------- */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-content:start}
+.coupon{padding:16px 18px}
+.cp-t{font-size:16px;font-weight:700;color:var(--ink)}
+.cp-s{font-size:12px;color:var(--ink2);margin-top:4px}
+.cp-count{display:flex;align-items:baseline;gap:9px;margin-top:14px}
+.cp-count .n{font-size:38px;color:var(--g);line-height:1}
+.cp-count .u{font-size:12.5px;color:var(--ink2)}
+.cp-bar{height:7px;border-radius:99px;background:#EFEFF4;margin-top:12px;overflow:hidden}
+.cp-bar i{display:block;height:100%;width:72%;border-radius:99px;background:linear-gradient(90deg,var(--g),#5FD878)}
+.info-card{padding:16px 18px}
+.if-tag{display:inline-block;font-size:10.5px;font-weight:700;color:var(--mc);letter-spacing:.5px}
+.if-t{font-size:15px;font-weight:600;color:var(--ink);margin-top:7px;line-height:1.4}
+.if-s{font-size:11.5px;color:var(--ink2);margin-top:6px}
+.chips{display:flex;gap:9px;flex-wrap:wrap;padding:2px 0 12px}
+.chip{font-size:12.5px;padding:6px 13px;border-radius:999px;background:#fff;color:var(--ink2);
+  border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04);cursor:pointer;transition:.2s}
+.chip.on{color:var(--mc);border-color:color-mix(in srgb,var(--mc) 55%,transparent);font-weight:600}
+.pref-row{display:flex;align-items:center;justify-content:space-between;padding:15px 18px}
+.pref-row .k{font-size:14.5px;color:var(--ink);font-weight:600}
+.pref-row .v{font-size:12.5px;color:var(--ink2)}
+.game-hero{padding:19px 20px;display:flex;gap:15px;align-items:center;background:linear-gradient(135deg,#fff 40%,color-mix(in srgb,var(--mc) 10%,#fff))}
+.gi{width:58px;height:58px;border-radius:17px;flex:none;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;
+  box-shadow:0 9px 18px color-mix(in srgb,var(--mc) 35%,transparent)}
+.gi-1{background:linear-gradient(145deg,#FFDA4D,var(--y))}
+.gi-2{background:linear-gradient(145deg,#5FD878,var(--g))}
+.gi-3{background:linear-gradient(145deg,#FFAE4D,var(--o))}
+.gi-4{background:linear-gradient(145deg,#C77BF0,var(--p))}
+.gh-t{font-size:18px;font-weight:700;color:var(--ink)}
+.gh-s{font-size:12.5px;color:var(--ink2);margin-top:4px}
+.gh-s b{color:var(--mc)}
+.score-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+.game-tile{padding:17px;display:flex;flex-direction:column;gap:9px}
+.gt-head{display:flex;align-items:center;gap:11px}
+.gt-head .n{font-size:16px;font-weight:700;color:var(--ink)}
+.gt-sub{font-size:11.5px;color:var(--ink2)}
+.stars{font-size:13px;letter-spacing:2.5px;color:var(--y)}
+.badge-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:6px 2px}
+.badge{display:flex;flex-direction:column;align-items:center;gap:9px}
+.badge .b{width:57px;height:57px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;
+  background:#fff;border:1.5px solid var(--line);color:var(--ink2)}
+.badge.on .b{background:linear-gradient(145deg,color-mix(in srgb,var(--mc) 65%,#fff),var(--mc));color:#fff;border-color:transparent;
+  box-shadow:0 8px 16px color-mix(in srgb,var(--mc) 35%,transparent)}
+.badge .n{font-size:11px;color:var(--ink2);font-weight:600}
+
+/* ---------- 二级详情页 ---------- */
+.detail{background:linear-gradient(178deg,#fff 34%,var(--tint,#f6f6f8))}
+.detail.tint-o{--mc:var(--o);--tint:#FFF6EC}
+.detail.tint-p{--mc:var(--p);--tint:#F8F4FE}
+.d-body{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding:74px 35px 30px;overflow:hidden}
+.d-title{font-size:27px;font-weight:700;color:var(--ink)}
+.d-sub{font-size:12.5px;color:var(--ink2);margin-top:8px}
+.big-btn{position:relative;width:168px;height:168px;border-radius:50%;margin-top:56px;cursor:pointer;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--mc) 78%,#fff),var(--mc));
+  box-shadow:0 18px 40px color-mix(in srgb,var(--mc) 38%,transparent),inset 0 2px 8px rgba(255,255,255,.45);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:66px;font-weight:600;
+  transition:transform .3s var(--bounce);border:none;font-family:inherit}
+.big-btn:active{transform:scale(.9)}
+.big-btn.pop{animation:collidePop .55s var(--bounce)}
+@keyframes collidePop{0%{transform:scale(.86)}45%{transform:scale(1.09)}100%{transform:scale(1)}}
+.big-btn .ripple{position:absolute;inset:0;border-radius:50%;border:3px solid var(--mc);opacity:0}
+.big-btn.pop .ripple{animation:rip .7s ease-out .08s}
+@keyframes rip{0%{transform:scale(.7);opacity:.7}100%{transform:scale(1.45);opacity:0}}
+.d-cheer{margin-top:46px;font-size:14.5px;color:var(--ink2);text-align:center;line-height:1.7}
+.d-cheer b{color:var(--mc)}
+.note-input{margin-top:auto;width:100%;border:none;outline:none;background:#fff;border-radius:var(--r-card);
+  padding:14px 18px;font-size:14px;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px rgba(0,0,0,.05);
+  font-family:inherit}
+.draft-flag{font-size:11px;color:var(--ink3);margin-top:9px;display:flex;align-items:center;gap:6px}
+.draft-flag i{font-style:normal}
+.back-btn{position:absolute;top:0;left:0;padding:56px 6px 20px 19px;font-size:16px;color:var(--mc);font-weight:600;z-index:5;background:none;border:none;cursor:pointer;font-family:inherit}
+.back-btn:active{opacity:.5}
+.d2-body{position:absolute;inset:0;display:flex;flex-direction:column;padding:66px 26px 30px}
+.d2-body textarea{flex:1;min-height:0;resize:none;border:none;outline:none;background:#fff;border-radius:var(--r-card);
+  padding:22px 20px;font-size:18.5px;line-height:1.75;color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px rgba(0,0,0,.05);font-family:inherit}
+.d2-body textarea::placeholder{color:var(--ink3)}
+.moods{display:flex;gap:9px;margin-top:17px;flex-wrap:wrap}
+.primary-btn{margin-top:17px;border:none;border-radius:var(--r-card);padding:17px;font-size:16.5px;font-weight:700;color:#fff;
+  background:linear-gradient(150deg,color-mix(in srgb,var(--mc) 75%,#fff),var(--mc));cursor:pointer;
+  box-shadow:0 12px 26px color-mix(in srgb,var(--mc) 32%,transparent);transition:transform .25s var(--bounce);font-family:inherit}
+.primary-btn:active{transform:scale(.95)}
+
+/* ---------- 特效层 ---------- */
+#fx{position:absolute;inset:0;pointer-events:none;z-index:60}
+/* ---------- v0.7 进入动画三件套 ---------- */
+/* ① 单字飞行：色卡里的字 → 下一级左上模块标题位（飞行中长出色块） */
+.glyph-fly{position:absolute;z-index:59;display:flex;align-items:center;justify-content:center;
+  border-radius:14px;font-weight:700;font-family:inherit;letter-spacing:0;
+  box-shadow:0 10px 24px rgba(0,0,0,.16);
+  transition:left .38s var(--spring),top .38s var(--spring),width .38s var(--spring),height .38s var(--spring),
+    font-size .38s,background-color .38s,color .38s,border-radius .38s}
+.glyph-fly.land{animation:landBounce .34s var(--bounce)}
+@keyframes landBounce{0%{transform:scale(1)}40%{transform:scale(1.18,.86)}70%{transform:scale(.94,1.08)}100%{transform:scale(1)}}
+/* ② 四向楔形块：区域从四个方向进入（衬底，随界面渐显融入） */
+.quad-wedge{position:absolute;z-index:56;border-radius:42px;opacity:0;
+  filter:blur(10px);pointer-events:none;
+  transition:left .3s var(--spring),top .3s var(--spring),opacity .3s ease}
+/* ③ 界面入场已由 V0.2.1 的 in-up/dn/lf/rt 方位动画承担（原 enter-fade 居中渐显废弃，曾覆盖方位滑入） */
+/* V0.2.1：退出淡出（保留，与方位入场配合） */
+.screen.exit-fade{z-index:2;animation:exitFade .24s ease both}
+@keyframes exitFade{from{opacity:1}to{opacity:0}}
+/* 碰撞时的旧屏处理（模块→模块仍用定向，见 in/out-*） */
+.comet{position:absolute;width:84px;height:84px;margin:-42px 0 0 -42px;border-radius:50%;z-index:58;
+  background:radial-gradient(circle at 30% 28%,rgba(255,255,255,.95),color-mix(in srgb,var(--c) 72%,#fff) 46%,var(--c) 78%);
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  box-shadow:0 0 36px 10px color-mix(in srgb,var(--c) 45%,transparent),inset 0 2px 10px rgba(255,255,255,.65);
+  animation:cometFly .42s cubic-bezier(.3,.65,.3,1) both,cometFade .28s ease .42s forwards}
+@keyframes cometFly{from{transform:translate(0,0) scale(.42);opacity:.95}to{transform:translate(var(--tx),var(--ty)) scale(2.25)}}
+@keyframes cometFade{to{opacity:0}}
+.comet::before{content:"";position:absolute;left:50%;top:50%;width:230px;height:32px;margin:-16px 0 0 -115px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 68%,transparent));
+  filter:blur(9px);border-radius:50%;
+  transform:rotate(var(--ang,0deg)) translateX(-150px)}
+.bloom{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) scale(.13) rotate(0deg);
+  background:var(--c);filter:blur(19px);mix-blend-mode:multiply;opacity:0;animation:bloomOut .62s ease-out forwards}
+.bloom.b1{width:305px;height:280px;border-radius:44% 56% 58% 42%/46% 42% 58% 54%;animation-delay:.36s}
+.bloom.b2{width:250px;height:262px;border-radius:58% 42% 46% 54%/50% 57% 43% 50%;animation-delay:.44s}
+.bloom.b3{width:348px;height:238px;border-radius:50% 50% 42% 58%/58% 44% 56% 42%;animation-delay:.5s}
+@keyframes bloomOut{0%{opacity:0;transform:translate(-50%,-50%) scale(.13) rotate(0)}34%{opacity:.45}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.5) rotate(26deg)}}
+.tint-fx{position:absolute;inset:0;opacity:0;
+  background:radial-gradient(circle at 50% 47%,var(--c) 6%,transparent 62%);animation:tintIn 1s .38s forwards}
+@keyframes tintIn{to{opacity:.14}}
+.hero-clone{position:absolute;z-index:55;background:#fff;border-radius:var(--r-card);overflow:hidden;
+  box-shadow:0 22px 60px rgba(0,0,0,.28);
+  transition:left .4s var(--spring),top .4s var(--spring),width .4s var(--spring),height .4s var(--spring),border-radius .35s}
+.toast{position:absolute;bottom:104px;left:50%;transform:translate(-50%,14px);background:rgba(28,28,30,.9);color:#fff;
+  padding:10px 17px;border-radius:999px;font-size:12.5px;max-width:82%;text-align:center;line-height:1.5;
+  opacity:0;transition:.3s var(--spring);z-index:70;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="proto-bar">
+    <span class="t"><b>FlipCompass</b> · U2 核心界面原型 V0.3.1 · 一二级细化</span>
+    <span id="screen-name">待机屏 · 罗盘零位</span>
+  </div>
+
+  <div class="viewport-wrap"><div class="scaler" id="scaler">
+    <div class="stage" id="stage">
+
+      <!-- ============ L0 待机屏（v0.8：三段式定位布局） ============ -->
+      <section class="screen active" id="scr-idle">
+        <div class="blob bo"></div><div class="blob bp"></div><div class="blob bg2"></div><div class="blob by"></div>
+        <div class="idle-inner">
+          <!-- 上段：日期+天气+时钟，组中心落在 上空白带(59~277)中点 168 -->
+          <!-- V0.2.3 ①：时间组去位置动画（静态呈现不闪动）；V0.2.5 ①：天气行（mock 数据） -->
+          <div class="idle-zone top">
+            <div class="idle-date" id="dte">10月12日 星期一</div>
+            <div class="idle-weather" id="wth">
+              <span id="wthCity">福州</span><span class="w-sep">·</span>
+              <span class="w-ic">☀︎</span><span id="wthCond">晴</span>
+              <span class="num" id="wthTemp">26°</span>
+            </div>
+            <div class="idle-clock num" id="clk">21:47</div>
+          </div>
+          <!-- 中段：罗盘（环钉在视觉中心 397） -->
+          <!-- V0.2.4：两层 spin 承载跟手滚动——ticks-spin(外圈刻度环) + ring-spin(轨迹环+游标)；
+               环带按下(65~125)才激活转环，其他区域按下走指针球交互，模式互斥 -->
+          <div class="idle-zone mid">
+            <div class="compass enter-c">
+              <div class="ticks-spin" id="ticksSpin"><div class="ticks"></div></div>
+              <div class="ring-spin" id="ringSpin"><div class="ring"></div><i class="ring-mark"></i></div>
+              <div class="ghost-dot" id="ghostDot"></div>
+              <button class="gchip up" data-go="m1"><span class="gc-in" style="--dc:#FF9500"><span class="gi-f">心</span><span class="gl">打卡</span></span></button>
+              <button class="gchip rt" data-go="m4"><span class="gc-in" style="--dc:#FFCC00"><span class="gi-f">玩</span><span class="gl">游戏</span></span></button>
+              <button class="gchip dn" data-go="m2"><span class="gc-in" style="--dc:#AF52DE"><span class="gi-f">思</span><span class="gl">想法</span></span></button>
+              <button class="gchip lf" data-go="m3"><span class="gc-in" style="--dc:#34C759"><span class="gi-f">知</span><span class="gl">情报</span></span></button>
+            </div>
+          </div>
+          <!-- 下段：提醒+提示。V0.2.5 ②：4 条胶囊占半行多（>195px/枚，两枚+gap>390 放不下一行）
+               → flex-wrap 换行成列；文案变短则自动回横排 -->
+          <div class="idle-zone bot">
+            <div class="idle-reminders" style="margin-top:0">
+              <span class="rem-pill enter-u" style="--k:0"><i class="o"></i>今日还有 2 个温情打卡没完成</span>
+              <span class="rem-pill enter-u" style="--k:1"><i class="p"></i>有 1 条想法写了一半 · 草稿在等你</span>
+              <span class="rem-pill enter-u" style="--k:2"><i class="g"></i>生活情报站 · 明早有雨 记得带伞</span>
+              <span class="rem-pill enter-u" style="--k:3"><i class="y"></i>每日一局没玩 · 益智小游戏在等你</span>
+            </div>
+            <div class="idle-hint-wrap enter-u" style="--k:4"><div class="idle-hint-flip" id="hintFlip">点色卡 · 或翻转我</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ M1 温情打卡（来自上方） ============ -->
+      <section class="screen module tint-o" id="scr-m1">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:58px 21px 14px">
+          <div class="mod-head">
+            <div class="mod-ic mi-o">心</div>
+            <div class="mod-title"><h1>温情打卡</h1><span>今天也好好抱了抱</span></div>
+            <div class="head-chip">连续 <span class="num">7</span> 天</div>
+          </div>
+          <div class="pager-clip"><div class="pager" id="pager-m1">
+            <div class="page">
+              <div class="item task done" data-open="d1"><div class="tcheck">✓</div>
+                <div><div class="tk-t">抱抱宝宝</div><div class="tk-s">每天一次 · 睡前完成</div></div>
+                <span class="tk-done-time num">19:42</span></div>
+              <div class="item task sel" data-open="d1"><div class="tcheck"></div>
+                <div><div class="tk-t">拥抱爱人</div><div class="tk-s">进门先抱一下</div></div><span class="tk-go">›</span></div>
+              <div class="item task" data-open="d1"><div class="tcheck"></div>
+                <div><div class="tk-t">给爸妈打个电话</div><div class="tk-s">一分钟也算数</div></div><span class="tk-go">›</span></div>
+              <div class="item task" data-open="d1"><div class="tcheck"></div>
+                <div><div class="tk-t">夸奖家人一次</div><div class="tk-s">具体的、认真的夸</div></div><span class="tk-go">›</span></div>
+            </div>
+            <div class="page">
+              <div class="stat-row">
+                <div class="stat"><div class="v num">1<em>/4</em></div><div class="l">今日</div></div>
+                <div class="stat"><div class="v num">12</div><div class="l">本周</div></div>
+                <div class="stat"><div class="v num">7</div><div class="l">连续天数</div></div>
+              </div>
+              <div class="heat"><h4>近十周热力<span>越暖越勤</span></h4>
+                <div class="heat-grid" id="heat-m1"></div></div>
+              <div class="encourage">「连续 7 天了，比上周多了一天」</div>
+            </div>
+            <div class="page">
+              <div class="new-card">＋ 新建打卡项</div>
+              <div class="item row-item"><span class="bar"></span><div class="tk-t">抱抱宝宝</div><span class="tk-go">编辑 ›</span></div>
+              <div class="item row-item"><span class="bar"></span><div class="tk-t">拥抱爱人</div><span class="tk-go">编辑 ›</span></div>
+              <div class="item row-item"><span class="bar"></span><div class="tk-t">给爸妈打个电话</div><span class="tk-go">编辑 ›</span></div>
+              <div class="row-item" style="justify-content:center;color:var(--ink3);font-size:12px;box-shadow:none;background:none">长按拖动排序 · 左滑停用</div>
+            </div>
+          </div></div>
+          <div class="dots" data-for="m1"><i class="on"></i><i></i><i></i></div>
+          <div class="nav-hint">上下滑选条目 · 左右滑换分组 · 点按选中 · 点「›」进入</div>
+        </div>
+      </section>
+
+      <!-- ============ M2 今天的想法（来自下方·正向呈现） ============ -->
+      <section class="screen module tint-p" id="scr-m2">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:58px 21px 14px">
+          <div class="mod-head">
+            <div class="mod-ic mi-p">思</div>
+            <div class="mod-title"><h1>今天的想法</h1><span>一两句，就够了</span></div>
+            <div class="head-chip num" id="m2-count">3 条</div>
+          </div>
+          <div class="pager-clip"><div class="pager" id="pager-m2">
+            <div class="page">
+              <div class="item compose-card sel" data-open="d2"><div class="pi">✎</div>
+                <div><div class="t">记录一条</div><div class="s">有草稿 1 条 · 上次没写完</div></div><span class="tk-go">›</span></div>
+              <div class="item th"><span class="th-time num">21:32</span>
+                <div class="th-body"><div class="th-text">闹钟响第三遍的时候，宝宝先笑了，忽然就不困了。</div>
+                <span class="mood">雀跃</span></div><span class="th-dot"></span></div>
+              <div class="item th"><span class="th-time num">08:12</span>
+                <div class="th-body"><div class="th-text">通勤路上想到：罗盘 App 的水滴转场，可以把涟漪留下来。</div>
+                <span class="mood">心动</span></div><span class="th-dot"></span></div>
+              <div class="item th"><span class="th-time num">07:05</span>
+                <div class="th-body"><div class="th-text">「重要的不是看什么，而是和谁看。」</div>
+                <span class="mood">平静</span></div><span class="th-dot"></span></div>
+            </div>
+            <div class="page">
+              <div class="item month-nav"><span>‹ 9月</span><b>2026年10月</b><span>11月 ›</span></div>
+              <div class="item th"><span class="th-time num">10-10</span>
+                <div class="th-body"><div class="th-text">需求五轮讨论全部落档，节奏刚好。</div><span class="mood">满足</span></div></div>
+              <div class="item th"><span class="th-time num">10-08</span>
+                <div class="th-body"><div class="th-text">宝宝第一次自己扶站，稳稳的 7 秒。</div><span class="mood">骄傲</span></div></div>
+              <div class="item th"><span class="th-time num">10-01</span>
+                <div class="th-body"><div class="th-text">十月的小目标：把待机屏做成安静的罗盘。</div><span class="mood">憧憬</span></div></div>
+            </div>
+          </div></div>
+          <div class="dots" data-for="m2"><i class="on"></i><i></i></div>
+          <div class="nav-hint">上下滑选条目 · 左右滑换分组 · 点按选中（真机：竖倒持握）</div>
+        </div>
+      </section>
+
+      <!-- ============ M3 生活情报站（来自左侧·正向呈现） ============ -->
+      <section class="screen module tint-g" id="scr-m3">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:58px 21px 14px">
+          <div class="mod-head">
+            <div class="mod-ic mi-g">知</div>
+            <div class="mod-title"><h1>生活情报站</h1><span>优惠券 · 攻略 · 好物 · 今日 12 条</span></div>
+            <div class="head-chip">RSS × 4 源</div>
+          </div>
+          <div class="pager-clip"><div class="pager" id="pager-m3">
+            <div class="page">
+              <div class="g2">
+                <div class="item coupon sel"><div class="if-tag">优惠券</div>
+                  <div class="cp-t">奶茶买一送一</div><div class="cp-s">楼下那家 · 到店出示</div>
+                  <div class="cp-count"><span class="n num">3</span><span class="u">天后过期</span></div>
+                  <div class="cp-bar"><i></i></div></div>
+                <div class="item info-card"><div class="if-tag">攻略 RSS</div>
+                  <div class="if-t">周末带娃 City Walk 路线（新）</div><div class="if-s">亲子出行指南 · 2 小时前</div></div>
+                <div class="item info-card"><div class="if-tag">好物降价</div>
+                  <div class="if-t">宝宝启蒙绘本套装 −30%</div><div class="if-s">常逛清单 · 今日最低</div></div>
+                <div class="item info-card"><div class="if-tag">攻略 RSS</div>
+                  <div class="if-t">秋季炖汤食材清单，照着买就行</div><div class="if-s">家常菜研究 · 昨天</div></div>
+              </div>
+            </div>
+            <div class="page">
+              <div class="chips">
+                <span class="chip on">全部</span><span class="chip">目的地</span><span class="chip">美食</span><span class="chip">亲子</span><span class="chip">炖汤</span>
+              </div>
+              <div class="g2">
+                <div class="item info-card sel"><div class="if-tag">目的地</div><div class="if-t">南平三日：山、汤、慢</div><div class="if-s">收藏于 10-03</div></div>
+                <div class="item info-card"><div class="if-tag">美食</div><div class="if-t">老城区糖水铺地图</div><div class="if-s">收藏于 09-28</div></div>
+              </div>
+            </div>
+            <div class="page">
+              <div class="item pref-row sel"><div><div class="k">口味偏好</div><div class="v" style="margin-top:4px">偏甜 · 少辣 · 汤水党</div></div><span class="tk-go">›</span></div>
+              <div class="item pref-row"><div><div class="k">常点外卖</div><div class="v" style="margin-top:4px">糖水 · 粥粉面 · 轻食</div></div><span class="tk-go">›</span></div>
+              <div class="item pref-row"><div><div class="k">价格敏感度</div><div class="v" style="margin-top:7px">○——— 适中</div></div></div>
+              <div class="item pref-row"><div class="k">RSS 源</div><div class="v" style="margin-top:4px">已订 4 个 · 管理 ›</div></div>
+            </div>
+          </div></div>
+          <div class="dots" data-for="m3"><i class="on"></i><i></i><i></i></div>
+          <div class="nav-hint">上下滑选条目 · 左右滑换分组 · 点按选中（真机：左横向持握）</div>
+        </div>
+      </section>
+
+      <!-- ============ M4 益智小游戏（来自右侧·正向呈现） ============ -->
+      <section class="screen module tint-y" id="scr-m4">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:58px 21px 14px">
+          <div class="mod-head">
+            <div class="mod-ic mi-y">玩</div>
+            <div class="mod-title"><h1>益智小游戏</h1><span>今日一局 · 精而不多</span></div>
+            <div class="head-chip">三星 × 2</div>
+          </div>
+          <div class="pager-clip"><div class="pager" id="pager-m4">
+            <div class="page">
+              <div class="item game-hero sel">
+                <div class="gi gi-2">◉</div>
+                <div style="flex:1"><div class="gh-t">迷宫滚球 · 第 7 关</div>
+                  <div class="gh-s"><b>倾斜手机</b>操控宝珠 · 中等难度</div>
+                  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><span class="score-chip">昨日 3★</span><span class="score-chip">用时 58s</span></div></div>
+                <span class="tk-go" style="font-size:22px">›</span></div>
+              <div class="g2">
+                <div class="item info-card"><div class="if-tag">今日战绩</div>
+                  <div class="if-t" style="font-size:14px">华容道 横刀立马 · <span class="num">84</span> 步</div><div class="if-s">15 分钟前 · 距最少步还差 12 步</div></div>
+                <div class="item info-card"><div class="if-tag">连胜</div>
+                  <div class="if-t" style="font-size:14px">每日一局 · 已连玩 <span class="num">5</span> 天</div><div class="if-s">再连 2 天解锁「棋逢对手」</div></div>
+              </div>
+            </div>
+            <div class="page">
+              <div class="g2">
+                <div class="item game-tile sel"><div class="gt-head"><div class="gi gi-1" style="width:42px;height:42px;border-radius:12px;font-size:19px">品</div>
+                  <div><div class="n">华容道</div><div class="gt-sub">经典布局 12 式</div></div></div>
+                  <div class="stars">★★☆☆☆</div></div>
+                <div class="item game-tile"><div class="gt-head"><div class="gi gi-2" style="width:42px;height:42px;border-radius:12px;font-size:19px">◉</div>
+                  <div><div class="n">迷宫滚球</div><div class="gt-sub">倾斜手机操控 · 10 关</div></div></div>
+                  <div class="stars">★★★☆☆</div></div>
+                <div class="item game-tile"><div class="gt-head"><div class="gi gi-3" style="width:42px;height:42px;border-radius:12px;font-size:19px">2048</div>
+                  <div><div class="n">2048</div><div class="gt-sub">合并到 1024 就很棒</div></div></div>
+                  <div class="stars">★☆☆☆☆</div></div>
+                <div class="item game-tile"><div class="gt-head"><div class="gi gi-4" style="width:42px;height:42px;border-radius:12px;font-size:19px">一</div>
+                  <div><div class="n">一笔画</div><div class="gt-sub">每日更新一图</div></div></div>
+                  <div class="stars">★★☆☆☆</div></div>
+              </div>
+            </div>
+            <div class="page">
+              <div class="badge-grid">
+                <div class="badge on"><div class="b">✓</div><div class="n">初翻罗盘</div></div>
+                <div class="badge on"><div class="b">7</div><div class="n">七日之约</div></div>
+                <div class="badge"><div class="b">?</div><div class="n">棋逢对手</div></div>
+                <div class="badge"><div class="b">?</div><div class="n">满星玩家</div></div>
+              </div>
+              <div class="encourage" style="padding-top:14px">「益智小游戏 · 数量不多，耐玩就好」</div>
+            </div>
+          </div></div>
+          <div class="dots" data-for="m4"><i class="on"></i><i></i><i></i></div>
+          <div class="nav-hint">上下滑选条目 · 左右滑换分组 · 点按选中（真机：右横向持握）</div>
+        </div>
+      </section>
+
+      <!-- ============ D1 打卡详情（二级A） ============ -->
+      <section class="screen detail tint-o" id="scr-d1" data-from="m1">
+        <button class="back-btn" data-back>‹ 温情打卡</button>
+        <div class="d-body">
+          <div class="d-title">拥抱爱人</div>
+          <div class="d-sub">进门先抱一下 · 今日</div>
+          <div class="big-btn" id="doneBtn">✓</div>
+          <div class="d-cheer" id="cheer">完成了今天的第 <b class="num">2</b> 件温情小事<br>连续第 <b class="num">7</b> 天，很稳</div>
+          <input class="note-input" placeholder="想补一句心情吗…（草稿自动保存）">
+          <div class="draft-flag"><i>✎</i> 未提交的备注将以草稿保留 · 永不丢失</div>
+        </div>
+      </section>
+
+      <!-- ============ D2 记录一条（二级B） ============ -->
+      <section class="screen detail tint-p" id="scr-d2" data-from="m2">
+        <button class="back-btn" data-back>‹ 今天的想法</button>
+        <div class="d2-body">
+          <textarea id="ta" placeholder="今天想对自己说点什么…&#10;随手写，写一半也没关系"></textarea>
+          <div class="moods">
+            <span class="chip">晴朗</span><span class="chip">平静</span><span class="chip on">心动</span>
+            <span class="chip">疲惫</span><span class="chip">雀跃</span>
+          </div>
+          <button class="primary-btn" id="keepBtn">收下这句</button>
+          <div class="draft-flag" style="justify-content:center"><i>✎</i> 已自动存草稿 · 翻走也一直在</div>
+        </div>
+      </section>
+
+      <div id="fx"></div>
+      <div class="toast" id="toast"></div>
+    </div><!-- /stage -->
+  </div></div>
+
+  <div class="simbar">
+    <button data-s="idle">⌂ 待机</button>
+    <button data-s="m1" class="co">▲ 竖正 · 打卡</button>
+    <button data-s="m2" class="cp">▼ 竖倒 · 想法</button>
+    <button data-s="m3" class="cg">◀ 左横 · 情报</button>
+    <button data-s="m4" class="cy">▶ 右横 · 游戏</button>
+  </div>
+  <div class="orient-caption">原型正向呈现 · 真机各按对应朝向持握 · 进入/退出均从模块对应方向来袭</div>
+</div>
+
+<script>
+/* ================= 状态 ================= */
+const S = { cur:'idle', busy:false, hero:null };
+const PAGE_N = { m1:3, m2:2, m3:3, m4:3 };
+const st = { m1:{p:0,sel:[0,1,0]}, m2:{p:0,sel:[0,0]}, m3:{p:0,sel:[0,0,0]}, m4:{p:0,sel:[0,0,0]} };
+const DIRC = { m1:'up', m2:'dn', m3:'lf', m4:'rt' };            // 模块 ↔ 方向
+const POSC = { m1:'up', m2:'dn', m3:'lf', m4:'rt' };            // 色卡位置类
+const CLR  = { m1:'#FF9500', m2:'#AF52DE', m3:'#34C759', m4:'#FFCC00' };
+const NAME = { idle:'待机屏 · 罗盘零位', m1:'M1 温情打卡 · 单字飞入标题位', m2:'M2 今天的想法 · 单字飞入标题位',
+  m3:'M3 生活情报站 · 单字飞入标题位', m4:'M4 益智小游戏 · 单字飞入标题位', d1:'二级 · 打卡详情（卡片生长）', d2:'二级 · 记录一条（草稿）' };
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const stage = $('#stage'), fx = $('#fx');
+
+/* ================= 缩放适配 ================= */
+function fit(){
+  const z = document.querySelector('.viewport-wrap');
+  const s = Math.min(1, (z.clientWidth-16)/390, (z.clientHeight-12)/844);
+  $('#scaler').style.transform = `scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+/* ================= 时钟 ================= */
+function tick(){
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  $('#clk').textContent = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  $('#dte').textContent = `${d.getMonth()+1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`;
+}
+tick(); setInterval(tick, 20000);
+
+/* ================= V0.2.5 ①：城市定位 + 天气温度 =================
+   原型：mock 数据静态渲染（单文件离线，无外部依赖）。
+   真机（iOS 原生实现，在 app/ 代码输出阶段落地）：
+     1. 城市定位 — CLLocationManager 请求 whenInUse 权限 → 一次定位 →
+        CLGeocoder 反地理编码取「城市/区县」级名称（如「福州」「南平」）；
+     2. 天气温度 — WeatherKit WeatherService.weather(for:) 取当前
+        condition（映射中文+SF Symbols 图标，如晴→sun.max）与 temperature（°C 取整）；
+     3. 刷新时机 — 前台进入 + 每 15 分钟 + 显著位置变化（ CLVisit/区域监听可省）；
+     4. 降级 — 无定位权限 → 显示上次缓存或「定位未开启」；网络失败 → 保留旧值。 */
+(function(){
+  const WT = { city:'福州', cond:'晴', temp:'26°' };            // mock（真机换 CoreLocation+WeatherKit）
+  $('#wthCity').textContent = WT.city;
+  $('#wthCond').textContent = WT.cond;
+  $('#wthTemp').textContent = WT.temp;
+})();
+
+/* V0.2.2 ①：待机底部提示词上下翻动轮播 */
+(function(){
+  const HINTS = ['点色卡 · 或翻转我','上下滑 · 选择条目','左右滑 · 切换分组','双击空白 · 返回上一级','向四方翻转 · 探索模块'];
+  let i = 0;
+  setInterval(()=>{
+    const el = document.getElementById('hintFlip');
+    if(!el || S.cur !== 'idle') return;          // 非待机时暂停翻动
+    el.classList.remove('in'); el.classList.add('out');
+    setTimeout(()=>{
+      i = (i+1) % HINTS.length;
+      el.textContent = HINTS[i];
+      el.classList.remove('out'); void el.offsetWidth; el.classList.add('in');
+      setTimeout(()=>el.classList.remove('in'), 520);
+    }, 440);
+  }, 3600);
+})();
+
+/* ================= 热力图 ================= */
+(function(){
+  const g = $('#heat-m1'), lv = [.06,.12,.2,.34,.55,.8,1];
+  [...Array(70)].forEach((_,i)=>{
+    const seed = (Math.sin(i*7.13)+Math.cos(i*3.7)+2)/4;
+    const a = i<7 ? lv[Math.min(6,2+Math.floor(seed*4))] : lv[Math.floor(seed*6.4)];
+    g.insertAdjacentHTML('beforeend', `<i style="--a:${a}"></i>`);
+  });
+})();
+
+/* ================= 状态刷新 ================= */
+function updateChrome(){
+  $('#screen-name').textContent = NAME[S.cur];
+  $$('.simbar button').forEach(b => b.classList.toggle('on', b.dataset.s === S.cur));
+}
+
+/* ================= 玻璃彗星（对应方向来袭） ================= */
+function cometFX(mod){
+  const c = CLR[mod];
+  const chip = document.querySelector(`.gchip.${POSC[mod]}`);
+  const sr = stage.getBoundingClientRect(), cr = chip.getBoundingClientRect();
+  const sc = sr.width/390;
+  const x0 = (cr.left + cr.width/2 - sr.left)/sc;
+  const y0 = (cr.top + cr.height/2 - sr.top)/sc;
+  const cx = 195, cy = 397;                       // 屏幕视觉中心
+  const tx = cx - x0, ty = cy - y0;
+  const ang = Math.atan2(ty, tx) * 180/Math.PI;
+  const el = document.createElement('div');
+  el.className = 'comet';
+  el.style.left = x0+'px'; el.style.top = y0+'px';
+  el.style.setProperty('--c', c); el.style.setProperty('--tx', tx+'px');
+  el.style.setProperty('--ty', ty+'px'); el.style.setProperty('--ang', ang+'deg');
+  fx.appendChild(el); setTimeout(()=>el.remove(), 900);
+  ['b3','b2','b1'].forEach(b => {
+    const bl = document.createElement('div'); bl.className = 'bloom '+b; bl.style.setProperty('--c',c);
+    fx.appendChild(bl); setTimeout(()=>bl.remove(), 1250);
+  });
+  const t = document.createElement('div'); t.className = 'tint-fx'; t.style.setProperty('--c',c);
+  fx.appendChild(t); setTimeout(()=>t.remove(), 1500);
+  chip.classList.remove('launch'); void chip.offsetWidth; chip.classList.add('launch');
+  setTimeout(()=>chip.classList.remove('launch'), 700);
+}
+function chipSettle(mod){
+  const chip = document.querySelector(`.gchip.${POSC[mod]}`);
+  chip.classList.remove('settle'); void chip.offsetWidth; chip.classList.add('settle');
+  setTimeout(()=>chip.classList.remove('settle'), 650);
+}
+
+/* ================= 进入/退出飞行引擎 =================
+   进入 = 色卡字 → 模块左上标题位（飞行中长出色块、字色转白、落位弹跳）
+   退出 = 模块左上字 → 轨道环色卡位（色块褪去、字色回模块色、落环弹跳）
+   v0.9 修复：终点不再硬绑 icon——isBack 时终点 = 色卡里的单字 rect，
+   起终点真正反向，退出才真的「飞回轨道环」（v0.7 起此函数退出分支
+   起终点同为 icon，字停在原地形变，从未飞回） */
+function glyphFlyTo(mod, fromRect, isBack){
+  const c = CLR[mod], ch = {m1:'心',m2:'思',m3:'知',m4:'玩'}[mod];
+  const sr = stage.getBoundingClientRect(), sc = sr.width/390;
+  const R = r => ({x:(r.left-sr.left)/sc, y:(r.top-sr.top)/sc, w:r.width/sc, h:r.height/sc});
+  const destSel = isBack ? `.gchip.${POSC[mod]} .gi-f` : `#scr-${mod} .mod-ic`;
+  const a = R(fromRect);                                   // 起点永远 = fromRect
+  const b = R(document.querySelector(destSel).getBoundingClientRect());  // 终点按方向
+  const fly = document.createElement('div');
+  fly.className = 'glyph-fly';
+  fly.style.left = a.x+'px'; fly.style.top = a.y+'px';
+  fly.style.width = a.w+'px'; fly.style.height = a.h+'px';
+  fly.style.fontSize = Math.round(a.h*.6)+'px';
+  fly.style.background = isBack ? c : 'transparent';
+  fly.style.color = isBack ? '#fff' : c;
+  fly.style.borderRadius = isBack ? '14px' : '6px';
+  fly.textContent = ch;
+  fx.appendChild(fly);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    fly.style.left = b.x+'px'; fly.style.top = b.y+'px';
+    fly.style.width = b.w+'px'; fly.style.height = b.h+'px';
+    fly.style.fontSize = Math.round(b.h*.48)+'px';
+    fly.style.background = isBack ? 'transparent' : c;
+    fly.style.color = isBack ? c : '#fff';
+    fly.style.borderRadius = isBack ? '6px' : '14px';
+  }));
+  return fly;   // 调用方负责 land 弹跳与移除
+}
+function quadWedgesIn(mod){
+  const cx = 195, cy = 397, sz = 190;
+  const off = {m1:[0,-30], m2:[0,30], m3:[-30,0], m4:[30,0]};   // 各自向自己方向偏移
+  const from = {m1:[0,-460], m2:[0,460], m3:[-460,0], m4:[460,0]};
+  const wedges = [];
+  ['m1','m2','m3','m4'].forEach(m => {
+    const w = document.createElement('div');
+    w.className = 'quad-wedge';
+    w.style.cssText = `width:${sz}px;height:${sz}px;background:${CLR[m]};`;
+    const [f0,f1] = from[m];
+    w.style.left = (cx - sz/2 + f0)+'px'; w.style.top = (cy - sz/2 + f1)+'px';
+    fx.appendChild(w);
+    wedges.push({w, m});
+  });
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    wedges.forEach(({w, m}) => {
+      const [o0,o1] = off[m];
+      w.style.left = (cx - sz/2 + o0)+'px'; w.style.top = (cy - sz/2 + o1)+'px';
+      w.style.opacity = m === mod ? '.5' : '.32';           // 目向色更醒目
+    });
+  }));
+  // 随界面渐显融入消散
+  setTimeout(()=>wedges.forEach(({w}) => w.style.opacity = '0'), 300);
+  setTimeout(()=>wedges.forEach(({w}) => w.remove()), 660);
+}
+/* 进入（待机 → 一级） */
+function idleToModule(mod){
+  if(S.busy) return; S.busy = true;
+  const chipEl = document.querySelector(`.gchip.${POSC[mod]}`);
+  const glyphEl = chipEl.querySelector('.gi-f');
+  glyphEl.style.opacity = '0';                            // 字起飞（原地隐字）
+  const chipRect = glyphEl.getBoundingClientRect();
+  // ① 单字飞向下一级左上 + ④ 四向区块进入 + ③ 界面渐显弹跳
+  const fly = glyphFlyTo(mod, chipRect, false);
+  quadWedgesIn(mod);
+  const el = $(`#scr-${mod}`);
+  el.classList.add('active','in-'+DIRC[mod]);            // V0.2.1：界面从模块对应方位滑入渐显（M1自上/M2自下/M3自左/M4自右）
+  $$('.screen').forEach(s => { if(s !== el) s.classList.remove('active'); });
+  S.cur = mod; updateChrome();
+  focusPulse(mod);                                          // V0.3.0 ①：进入模块焦点卡轻弹示意
+  setTimeout(()=>{ fly.classList.add('land'); }, 390);    // 字落位弹跳
+  setTimeout(()=>{ fly.remove(); glyphEl.style.opacity=''; chipEl.classList.remove('launch'); void chipEl.offsetWidth; chipEl.classList.add('launch'); }, 580);
+  setTimeout(()=>{ chipEl.classList.remove('launch'); }, 1280);
+  setTimeout(()=>{ el.classList.remove('in-'+DIRC[mod]); S.busy = false; }, 600);
+}
+/* 退出（一级 → 待机）：v0.9 完整闭环——左上的字飞回轨道环色卡位
+   时序：字起飞(icon字隐藏交接) → 界面淡出 → 字飞行满 380ms → 落环弹跳
+        → 字归位色卡弹座(settle) → 待机渐显。与进入动画完全对称成环。 */
+function exitToIdle(mod, moduleEl){
+  S.busy = true;
+  const icEl = moduleEl.querySelector('.mod-ic');
+  const chipEl = document.querySelector(`.gchip.${POSC[mod]}`);
+  const glyphEl = chipEl.querySelector('.gi-f');
+  const fly = glyphFlyTo(mod, icEl.getBoundingClientRect(), true);   // 左上 icon → 轨道环色卡
+  icEl.style.color = 'transparent';                                  // icon 字由飞行字接管
+  glyphEl.style.opacity = '0';                                       // 色卡原字等飞回的字落座
+  moduleEl.classList.add('exit-fade');
+  const idle = $('#scr-idle');
+  setTimeout(()=>{ idle.classList.add('active','idle-ret'); }, 140);
+  setTimeout(()=>{ fly.classList.add('land'); }, 395);               // 落环弹跳（与进入同款）
+  setTimeout(()=>{
+    moduleEl.classList.remove('active','exit-fade');
+    fly.remove();
+    icEl.style.color = ''; glyphEl.style.opacity = '';               // 双侧字归位
+    S.cur = 'idle'; updateChrome();
+  }, 620);
+  setTimeout(()=>{ idle.classList.remove('idle-ret'); }, 800);
+  chipSettle(mod);                                                   // 色卡回弹落座
+  setTimeout(()=>{ S.busy = false; }, 820);
+}
+function moduleToIdle(){
+  if(S.busy) return; const mod = S.cur;
+  if(!DIRC[mod]) return;
+  exitToIdle(mod, $(`#scr-${mod}`));
+}
+function moduleToModule(a, b){
+  if(S.busy) return; S.busy = true;
+  cometFX(b);
+  const A = $(`#scr-${a}`), B = $(`#scr-${b}`);
+  A.classList.add('out-'+DIRC[a]);
+  B.classList.add('active','in-'+DIRC[b],'arrive');
+  S.cur = b; updateChrome();
+  focusPulse(b);                                            // V0.3.0 ①：模块直切后焦点卡轻弹示意
+  setTimeout(()=>{ A.classList.remove('active','out-'+DIRC[a]);
+    B.classList.remove('in-'+DIRC[b]); B.classList.remove('arrive'); S.busy = false; }, 720);
+}
+function goModule(target){
+  if(S.busy) return;
+  if(S.cur === 'idle'){ idleToModule(target); return; }
+  if(['d1','d2'].includes(S.cur)){
+    toast('真机行为：二级内翻转 → 轻提示「切换到该模块？未保存内容已存草稿」'); return;
+  }
+  if(S.cur === target) return;
+  moduleToModule(S.cur, target);
+}
+function backToIdle(){
+  if(S.busy) return;
+  if(['d1','d2'].includes(S.cur)){
+    const mod = $(`#scr-${S.cur}`).dataset.from;
+    restoreHero();
+    exitToIdle(mod, $(`#scr-${S.cur}`));
+    return;
+  }
+  moduleToIdle();
+}
+/* V0.2.2 ②：返回上一级（一级→待机；二级→所属一级模块） */
+function backOneLevel(){
+  if(S.busy) return;
+  if(['d1','d2'].includes(S.cur)){
+    const mod = $(`#scr-${S.cur}`).dataset.from;
+    const dEl = $(`#scr-${S.cur}`), mEl = $(`#scr-${mod}`);
+    restoreHero();                                  // 恢复被生长隐藏的卡片
+    S.busy = true;
+    dEl.classList.add('exit-fade');                 // 二级淡出
+    mEl.classList.add('active','in-'+DIRC[mod]);    // 一级自其方位归位
+    S.cur = mod; updateChrome();
+    focusPulse(mod);                                        // V0.3.0 ①：返回一级焦点卡轻弹示意
+    setTimeout(()=>{ dEl.classList.remove('active','exit-fade'); }, 260);
+    setTimeout(()=>{ mEl.classList.remove('in-'+DIRC[mod]); S.busy = false; }, 520);
+  } else if(DIRC[S.cur]){
+    moduleToIdle();
+  }
+}
+/* 双击空白返回上一级（两次干净点按，间隔<320ms，非交互元素）
+   V0.2.2 修订：排除表收紧到"真正空白"——按钮/徽标/标题/正文/统计/页点
+   等有内容或可交互的元素都不得触发返回（.big-btn/.head-chip 是 div 而
+   非 button，早期版本漏排除，双击 ✓ 打卡键会误触返回，已修）。 */
+let lastTapT = 0;
+const isBlankTarget = t => t && !t.closest('.item, .new-card, .row-item, button, .chip, input, textarea, a, .big-btn, .head-chip, .mod-head, .d-title, .d-sub, .d-cheer, .draft-flag, .moods, .dots, .nav-hint, .toast, .stat-row, .heat, .encourage');
+stage.addEventListener('pointerup', e=>{
+  const moved = Math.hypot(e.clientX-px, e.clientY-py);
+  if(S.cur === 'idle' || moved > 10 || !isBlankTarget(e.target)){ lastTapT = 0; return; }
+  const now = performance.now();
+  if(now - lastTapT < 320){ lastTapT = 0; if(!S.busy) backOneLevel(); }
+  else lastTapT = now;
+});
+$$('.gchip').forEach(ch => ch.addEventListener('click', e => { e.stopPropagation(); goModule(ch.dataset.go); }));
+$$('.simbar button').forEach(b => b.addEventListener('click', ()=>{
+  const t = b.dataset.s;
+  if(t === 'idle'){ backToIdle(); return; }
+  if(t === S.cur) return;
+  goModule(t);
+}));
+
+/* ================= 分组分页 + 条目选择 ================= */
+function pageOf(mod){ return $(`#pager-${mod}`).children[st[mod].p]; }
+function itemsOf(mod){ return [...pageOf(mod).querySelectorAll('.item')]; }
+
+/* ================= V0.3.0 ①：浮动焦点卡系统（跟随式焦点） =================
+   每模块一枚 .focus-card 注入 pager-clip；焦点不再是条目上的类切换显示/隐藏，
+   而是焦点卡在条目间平滑滑移（弹簧 transition）：
+   - renderSel → focusPos()：定位到当前选中条目（换算含 stage 缩放 sc）；
+     x 不从 rect 取（分页过渡中帧会测到滑移中间值）而用对称内缩常量换算
+   - 拖动中 focusLive()：实时跟手橡皮筋预览（transition 置 none 直落位移）
+   - 松手：成功步进 renderSel 定位新条目；边界被拒 focusPos 弹回原位
+   - 切分组：pager 平移后 focusPos 迁移到新分组选中条目（对应区域） */
+['m1','m2','m3','m4'].forEach(m => {
+  const f = document.createElement('div');
+  f.className = 'focus-card'; f.id = 'focus-' + m;
+  $(`#pager-${m}`).parentElement.appendChild(f);
+});
+function focusPos(mod){
+  const f = document.getElementById('focus-' + mod); if(!f) return;
+  const pager = document.getElementById('pager-' + mod);
+  const items = itemsOf(mod), el = items[st[mod].sel[st[mod].p]];
+  f.style.transition = '';                                  // 恢复弹簧滑移（live 预览时为 none）
+  if(!el){ f.style.opacity = 0; return; }                   // 无可选条目的分组（统计页等）→ 无焦点
+  const clip = pager.parentElement;
+  const pr = pager.children[st[mod].p].getBoundingClientRect();   // 目标页（过渡中与条目同步滑，两者差值恒定）
+  const sr = stage.getBoundingClientRect(), sc = sr.width/390;
+  const cr = clip.getBoundingClientRect();
+  const ir = el.getBoundingClientRect();
+  const clipPadL = (clip.offsetWidth - pager.offsetWidth)/2;     // 对称内缩（布局值，不受过渡影响）
+  const wL = ir.width/sc, hL = ir.height/sc;
+  const xL = clipPadL + (ir.left - pr.left)/sc;                  // 条目在页内真实 x（双列网格左右列各自定位）
+  const yL = (ir.top - cr.top)/sc;                               // 竖向不受分页横移影响
+  f.style.opacity = 1;
+  f.style.width  = wL.toFixed(1) + 'px';
+  f.style.height = hL.toFixed(1) + 'px';
+  f.style.transform = `translate(${xL.toFixed(1)}px, ${yL.toFixed(1)}px)`;
+}
+function focusLive(mod, dyPx){                              // V0.3.1 ①：吸附式跟手——焦点卡始终框住一个真实条目格位
+  const f = document.getElementById('focus-' + mod);
+  const items = itemsOf(mod); if(!f || items.length < 2 || !pressed) return;   // 仅按住拖动（防 hover 误触）
+  const ci = st[mod].sel[st[mod].p];
+  const el = items[ci]; if(!el) return;
+  const pager = document.getElementById('pager-' + mod);
+  const clip = pager.parentElement;
+  const pr = pager.children[st[mod].p].getBoundingClientRect();
+  const sr = stage.getBoundingClientRect(), sc = sr.width/390;
+  const cr = clip.getBoundingClientRect();
+  const r1 = items[0].getBoundingClientRect(), r2 = items[1].getBoundingClientRect();
+  const stride = (r2.top - r1.top)/sc;                       // 一格高（含 gap）
+  const offIdx = Math.max(-1, Math.min(1, Math.round((dyPx/sc)/stride)));   // 拖过半格 → 吸附相邻格（clamp ±1，松手同幅步进一致）
+  liveTarget = { mod, idx: ci + offIdx };                    // V0.3.1 ①：吸附目标（松手时落实——所见即所得；慢拖不足 36px 但过半格也步进）
+  const tgt = items[Math.max(0, Math.min(items.length-1, ci + offIdx))];    // 边界 clamp：顶/末格吸附不动，与松手 toast 呼应
+  if(!tgt) return;
+  const ir = tgt.getBoundingClientRect();
+  const clipPadL = (clip.offsetWidth - pager.offsetWidth)/2;
+  f.style.transition = 'transform .18s cubic-bezier(.32,.72,.28,1),width .18s cubic-bezier(.32,.72,.28,1),height .18s cubic-bezier(.32,.72,.28,1)';   // 吸附切换 .18s 滑移动画（短弹簧，拖动跟手不拖沓）
+  f.style.opacity = 1;
+  f.style.width  = (ir.width/sc).toFixed(1) + 'px';
+  f.style.height = (ir.height/sc).toFixed(1) + 'px';
+  f.style.transform = `translate(${(clipPadL + (ir.left - pr.left)/sc).toFixed(1)}px, ${((ir.top - cr.top)/sc).toFixed(1)}px)`;
+}
+function focusPulse(mod){                                   // 到位/进模块轻弹（scale 独立属性，不占 transform）
+  const f = document.getElementById('focus-' + mod); if(!f) return;
+  f.classList.remove('pulse'); void f.offsetWidth; f.classList.add('pulse');
+}
+function renderSel(mod){
+  itemsOf(mod).forEach((el,i) => el.classList.toggle('sel', i === st[mod].sel[st[mod].p]));
+  $(`#pager-${mod}`).style.transform = `translateX(-${st[mod].p*100}%)`;
+  $$(`.dots[data-for=${mod}] i`).forEach((d,i)=> d.classList.toggle('on', i===st[mod].p));
+  focusPos(mod);                                            // V0.3.0 ①：焦点卡跟随定位
+}
+function pageStep(mod, dir){
+  const np = st[mod].p + dir;
+  if(np<0 || np>=PAGE_N[mod]){ toast(dir<0?'已是第一组 · 前面没有分组了':'已是最后一组'); return; }
+  st[mod].p = np; renderSel(mod);
+}
+function selStep(mod, dir){
+  const items = itemsOf(mod), cur = st[mod].sel[st[mod].p];
+  const np = Math.max(0, Math.min(items.length-1, cur+dir));
+  if(np===cur){ toast(dir<0?'已是第一条':'已是最后一条'); return; }
+  st[mod].sel[st[mod].p] = np; renderSel(mod);
+}
+/* V0.3.0 ②：单点 = 选择当前节点（焦点移过去；不再两击进入）
+   进入二级 = 点已选中条目右侧「›」进入区（heroOpen）/ 键盘 Enter */
+function onItemTap(el, tgt){
+  const mod = S.cur; if(!st[mod]) return;
+  if(el.classList.contains('new-card')){ toast('真机：弹出新建打卡项表单（YAML 表单页）'); return; }
+  const items = itemsOf(mod), idx = items.indexOf(el);
+  if(idx < 0) return;
+  if(idx !== st[mod].sel[st[mod].p]){ st[mod].sel[st[mod].p] = idx; renderSel(mod); return; }
+  focusPulse(mod);                                          // V0.3.1 ②：点已选中条目正文 = 确认当前（不进入；进入走「›」）
+  if(el.dataset.open && tgt && tgt.closest && tgt.closest('.tk-go')) heroOpen(el, el.dataset.open);
+}
+
+/* ================= Hero 卡片生长 ================= */
+function heroOpen(card, target){
+  const sr = stage.getBoundingClientRect(), cr = card.getBoundingClientRect();
+  const sc = sr.width/390;
+  const x=(cr.left-sr.left)/sc, y=(cr.top-sr.top)/sc, w=cr.width/sc, h=cr.height/sc;
+  const clone = card.cloneNode(true);
+  clone.className = 'hero-clone';
+  clone.style.left = x+'px'; clone.style.top = y+'px';
+  clone.style.width = w+'px'; clone.style.height = h+'px';
+  clone.classList.remove('sel');
+  stage.appendChild(clone);
+  card.style.visibility = 'hidden';
+  requestAnimationFrame(()=>{ clone.style.left='0px'; clone.style.top='0px';
+    clone.style.width='390px'; clone.style.height='844px'; clone.style.borderRadius='24px'; });
+  S.hero = { card };
+  setTimeout(()=>{
+    const el = $(`#scr-${target}`);
+    const from = el.dataset.from; // m1/m2
+    el.classList.add('active','in-'+DIRC[from]);
+    $$('.screen').forEach(s => { if(s !== el) s.classList.remove('active'); });
+    S.cur = target; updateChrome();
+    setTimeout(()=> el.classList.remove('in-'+DIRC[from]), 560);
+  }, 240);
+  setTimeout(()=> clone.remove(), 430);
+}
+function restoreHero(){
+  if(!S.hero) return;
+  S.hero.card.style.visibility=''; S.hero = null;
+}
+$$('[data-back]').forEach(b => b.addEventListener('click', e=>{ e.stopPropagation(); backOneLevel(); }));   // V0.2.2：返回上一级（二级→所属一级）
+
+/* ================= 二级页交互 ================= */
+$('#doneBtn').addEventListener('click', function(e){
+  e.stopPropagation();
+  this.classList.remove('pop'); void this.offsetWidth; this.classList.add('pop');
+  this.textContent = '✓';
+  const cheers = ['完成了今天的第 <b class="num">2</b> 件温情小事<br>连续第 <b class="num">7</b> 天，很稳',
+    '抱一下，胜过说十句<br>今天就到这，去休息吧',
+    '记录时间 <b class="num">21:47</b> · 什么都不用再补'];
+  $('#cheer').innerHTML = cheers[Math.floor(Math.random()*cheers.length)];
+});
+$('#keepBtn').addEventListener('click', e=>{ e.stopPropagation(); toast('已收下这句 ✦（真机：玻璃轻跳确认 + 收回一级）'); });
+$('#ta').addEventListener('input', function(){ $('#m2-count').textContent = '打字中…'; });
+
+/* ================= Toast ================= */
+let toastTmr;
+function toast(msg){
+  const t = $('#toast'); t.innerHTML = msg; t.classList.add('show');
+  clearTimeout(toastTmr); toastTmr = setTimeout(()=> t.classList.remove('show'), 2400);
+}
+
+/* ================= v0.9 ②：待机幽灵轨迹（iOS 输入法式拖尾） =================
+   在待机屏按下并滑动：圆心玻璃指针球向滑动方向移动（限环内），身后留
+   串渐渐隐幽灵回声；回声与指针球发光色 = 当前滑向模块的主题色——用户
+   滑到哪、颜色就预示哪个模块。松手弹回圆心（导航仍由主手势逻辑判定）。 */
+/* ================= V0.2.4：按下位置决定模式（互斥） =================
+   ball 轨迹球模式（默认）：任何非环带区域按下 → 指针球移动+拖尾+颜色预示；
+   ring 转环模式：按住轨迹环环带（design 半径 65~125，避开色卡）→
+   轨迹环/刻度环双层跟手滚动 + 激活样式，指针球不参与。
+   模式在 down 时锁定，单次手势内不切换；ghostEnd 不清 mode（先于主手势
+   执行，mode 留给主手势作转环吞导航判定），由下次 ghostStart 重置。 */
+const ghost = { active:false, mode:'ball', sx:0, sy:0, vx:0, vy:0, lx:0, ly:0, le:0, a0:0 };
+const gDot = () => document.getElementById('ghostDot');
+
+/* ================= 转环：累计角度 + 刻度 tick 反馈 =================
+   转环模式下：.ticks-spin（外圈刻度环）与 .ring-spin（轨迹环+游标）
+   同角度跟手滚动，累计角度跨手势保持（解压滚轮，松手不回正）；
+   每转过一个刻度（repeating-conic 15°/格 = 24 格/周）tick 一次：
+   指针球 ::before 涟漪脉冲。真机：UIImpactFeedbackGenerator(.rigid) 轻震。 */
+const TICK_STEP = 15;              // 刻度角距（与 .ticks 背景 repeating-conic 15deg 对齐）
+const RING_R0 = 65, RING_R1 = 125; // 转环激活环带（design 半径；内含 180 环线 90 与刻度带 ~112-120）
+let spinRot = 0;                   // 环累计角度（度；跨手势保持）
+let lastTickIdx = 0;               // 已进入的刻度序号 floor(spinRot/15)
+let tickCount = 0;                 // 本会话累计 tick 次数（验证/调试用）
+function compassAngle(e){          // 手指相对罗盘中心的角度（屏幕坐标系，atan2 度）
+  const r = document.querySelector('.compass').getBoundingClientRect();
+  return Math.atan2(e.clientY - (r.top + r.height/2), e.clientX - (r.left + r.width/2)) * 180 / Math.PI;
+}
+function compassRadius(e, sc){     // 手指到罗盘中心的 design 半径（px，除以缩放）
+  const r = document.querySelector('.compass').getBoundingClientRect();
+  return Math.hypot(e.clientX - (r.left + r.width/2), e.clientY - (r.top + r.height/2)) / sc;
+}
+function dotTickPulse(){           // 指针球涟漪脉冲（reflow 重播）
+  const d = gDot(); if(!d) return;
+  d.classList.remove('ticked'); void d.offsetWidth; d.classList.add('ticked');
+  tickCount++;
+}
+function spinWheels(rad){          // 两层 spin 同角度滚动（角度单位：度）
+  const tf = `rotate(${rad.toFixed(2)}deg)`;
+  const t1 = document.getElementById('ticksSpin'), t2 = document.getElementById('ringSpin');
+  if(t1) t1.style.transform = tf;
+  if(t2) t2.style.transform = tf;
+}
+function ghostStart(e){
+  ghost.mode = 'ball';                                      // 默认轨迹球模式（含非 idle/忙早适退路径）
+  if(S.cur !== 'idle' || S.busy) return;
+  ghost.active = true;
+  ghost.sx = e.clientX; ghost.sy = e.clientY;
+  ghost.vx = ghost.vy = ghost.lx = ghost.ly = 0; ghost.le = 0;
+  ghost.a0 = compassAngle(e);
+  const sr = stage.getBoundingClientRect(), sc0 = sr.width/390;
+  const rd = compassRadius(e, sc0);
+  const onChip = e.target && e.target.closest && e.target.closest('.gchip');   // 色卡按钮区不算环带
+  /* V0.2.4 ①：按住轨迹环环带 → 转环模式：激活样式 + 首次轻 tick（真机 selection
+     feedback 告诉用户「环已啮合」）；指针球不出场（不挂 trail） */
+  if(rd >= RING_R0 && rd <= RING_R1 && !onChip){
+    ghost.mode = 'ring';
+    document.querySelector('.compass').classList.add('ring-live');
+    dotTickPulse();
+    return;
+  }
+  const d = gDot(); if(!d) return;
+  d.classList.remove('trail'); void d.offsetWidth; d.classList.add('trail');
+}
+function ghostMove(e){
+  if(!ghost.active || S.cur !== 'idle') return;
+  const sr = stage.getBoundingClientRect(), sc = sr.width/390;
+  /* V0.2.4 ①：转环模式——只滚动环，指针球不动 */
+  if(ghost.mode === 'ring'){
+    const a1 = compassAngle(e);
+    let da = a1 - ghost.a0;
+    if(da > 180) da -= 360; else if(da < -180) da += 360;   // 手指绕过 ±180° 时角度环绕归一
+    spinRot += da; ghost.a0 = a1;
+    spinWheels(spinRot);
+    const idx = Math.floor(spinRot / TICK_STEP);
+    if(idx !== lastTickIdx){
+      lastTickIdx = idx;
+      dotTickPulse();   // 真机：UIImpactFeedbackGenerator(.rigid).impactOccurred() —— 每过一格轻震
+    }
+    return;
+  }
+  /* 轨迹球模式（其他区域）：指针球移动+拖尾+颜色预示（V0.2.2 行为；不再带动环） */
+  let dx = (e.clientX - ghost.sx)/sc, dy = (e.clientY - ghost.sy)/sc;
+  const dist = Math.hypot(dx, dy), RM = 92;                 // 指针球活动半径（环内）
+  if(dist > RM){ dx *= RM/dist; dy *= RM/dist; }
+  ghost.vx = dx; ghost.vy = dy;
+  const horiz = Math.abs(dx) > Math.abs(dy);
+  const target = horiz ? (dx < 0 ? 'm3' : 'm4') : (dy < 0 ? 'm1' : 'm2');
+  const col = CLR[target];
+  const d = gDot(); if(!d) return;
+  d.style.transform = `translate(${dx}px,${dy}px)`;
+  d.style.setProperty('--gc', col + '88');
+  // 幽灵回声：移动增量 >10px 或超时 70ms 时落一粒
+  const moved = Math.hypot(dx - ghost.lx, dy - ghost.ly), now = performance.now();
+  if(moved > 10 || now - ghost.le > 70){
+    const echo = document.createElement('div');
+    echo.className = 'ghost-echo';
+    echo.style.setProperty('--gc', col);
+    echo.style.marginLeft = (dx - 7.5) + 'px';
+    echo.style.marginTop = (dy - 7.5) + 'px';
+    echo.style.transform = '';
+    d.parentElement.appendChild(echo);
+    setTimeout(()=>echo.remove(), 540);
+    ghost.lx = dx; ghost.ly = dy; ghost.le = now;
+  }
+}
+function ghostEnd(){
+  ghost.active = false;
+  document.querySelector('.compass').classList.remove('ring-live');   // V0.2.4 ③：退出激活态（幂等；环停在当前角度）
+  if(ghost.mode === 'ring') return;                         // mode 不在此清：主手势 pointerup 回调在本回调之后执行，还要读它判定吞导航
+  const d = gDot(); if(!d) return;
+  d.classList.remove('trail');                             // 弹回圆心（transition 恢复 bounce）
+  d.style.transform = ''; d.style.setProperty('--gc', '');
+}
+stage.addEventListener('pointerdown', ghostStart);
+stage.addEventListener('pointermove', ghostMove);
+stage.addEventListener('pointerup', ghostEnd);
+stage.addEventListener('pointercancel', ghostEnd);
+
+/* ================= 手势 ================= */
+let px=0, py=0, dragMoved=false, pressed=false;             // V0.3.1 ①：pressed 严格限定按住拖动（dragMoved 残留致 hover 乱飞的 bug 已修）
+let liveTarget = null;                                       // V0.3.1 ①：focusLive 吸附目标（mod,idx；松手时落实——慢拖半格也步进，与吸附预览所见一致）
+stage.addEventListener('pointerdown', e=>{ px=e.clientX; py=e.clientY; dragMoved=false; pressed=true; });
+stage.addEventListener('pointermove', e=>{
+  if(!pressed) return;                                       // 未按下不处理（桌面鼠标滑过不干扰焦点）
+  const dx = e.clientX-px, dy = e.clientY-py;
+  if(Math.hypot(dx,dy) > 9) dragMoved=true;
+  /* V0.3.1 ①：模块列表竖向按住拖动 → 焦点卡吸附式跟手（半格吸附到相邻条目格位） */
+  if(dragMoved && st[S.cur] && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) focusLive(S.cur, dy);
+});
+stage.addEventListener('pointerup', e=>{
+  pressed = false;                                           // V0.3.1 ①：按住状态复位
+  const dx = e.clientX-px, dy = e.clientY-py;
+  /* V0.3.1 ①：吸附式步进落实——竖向拖动中焦点已吸附到目标格，松手即落实该格
+     （修复：慢拖半格（屏幕像素 <36px）被步进阈值吞掉导致 sel 与焦点视觉脱节） */
+  if(liveTarget && liveTarget.mod === S.cur && st[S.cur] && Math.abs(dy) >= Math.abs(dx)){
+    const items = itemsOf(S.cur);
+    const t = Math.max(0, Math.min(items.length-1, liveTarget.idx));
+    if(liveTarget.idx < 0 || liveTarget.idx > items.length-1)   // V0.3.1：越界即提示（无论最终是否变化）
+      toast(liveTarget.idx < 0 ? '已是第一条' : '已是最后一条');
+    if(t !== st[S.cur].sel[st[S.cur].p]){
+      st[S.cur].sel[st[S.cur].p] = t; renderSel(S.cur);
+    } else {
+      focusPos(S.cur);                                       // 吸附未变（含边界 clamp）→ 焦点归位
+    }
+    liveTarget = null;
+    return;
+  }
+  liveTarget = null;
+  if(Math.hypot(dx,dy) < 36) return;
+  const horiz = Math.abs(dx) > Math.abs(dy);
+  if(S.cur === 'idle'){
+    /* V0.2.4 ④：转环手势吞掉导航（模式在 down 时已锁定；ghostEnd 先于本回调执行但不清 mode）。
+       导航 = 色卡点按 / 中心与环外区域四向滑动 */
+    if(ghost.mode === 'ring') return;
+    const d = horiz ? (dx<0?'m3':'m4') : (dy<0?'m1':'m2');
+    goModule(d); return;
+  }
+  if(['d1','d2'].includes(S.cur)){
+    if(horiz && dx>0) backOneLevel();   // V0.2.2：右滑 = 返回上一级（二级→一级）
+    return;
+  }
+  if(!st[S.cur]) return;
+  if(horiz) pageStep(S.cur, dx<0?1:-1);   // V0.2.2 跟手(iOS/触控板自然方向)：左滑 → 下一组
+  else      selStep(S.cur, dy>0?1:-1);    // 手指下滑 → 选择下一条（选择跟随手指方向）
+  focusPos(S.cur);   // V0.3.0 ①：live 预览复位（成功已由 renderSel 定位；边界被拒弹回原位）
+});
+stage.addEventListener('click', e=>{
+  if(dragMoved) { dragMoved=false; return; }
+  const chip = e.target.closest('.chip');
+  if(chip){
+    chip.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+    chip.classList.add('on'); return;
+  }
+  const el = e.target.closest('.item, .new-card');
+  /* V0.3.1 ②：单点空白 = 确认当前选中（焦点卡轻弹，不导航；快速双击空白仍为返回待机） */
+  if(!el){
+    if(e.target.closest('.screen.active') && st[S.cur] && S.cur !== 'idle') focusPulse(S.cur);
+    return;
+  }
+  if(!el.closest('.screen.active')) return;
+  if(!st[S.cur]) return;
+  onItemTap(el, e.target);   // V0.3.0 ②：单点 = 选择（进入走「›」/Enter）
+});
+
+/* ================= 键盘 ================= */
+addEventListener('keydown', e=>{
+  if(S.cur==='idle'){
+    const map = {ArrowUp:'m1',ArrowDown:'m2',ArrowLeft:'m3',ArrowRight:'m4'};
+    if(map[e.key]) goModule(map[e.key]);
+    return;
+  }
+  if(['d1','d2'].includes(S.cur)){
+    if(e.key==='Escape') backOneLevel();   // V0.2.2：Esc = 返回上一级（二级→一级）
+    return;
+  }
+  const mod = S.cur; if(!st[mod]) return;
+  if(e.key==='ArrowUp') selStep(mod,-1);
+  if(e.key==='ArrowDown') selStep(mod,1);
+  if(e.key==='ArrowRight') pageStep(mod,1);
+  if(e.key==='ArrowLeft') pageStep(mod,-1);
+  if(e.key==='Enter'){ const it = itemsOf(mod)[st[mod].sel[st[mod].p]];   // V0.3.0 ②：Enter 直接进入选中条目的二级
+    if(it) it.dataset.open ? heroOpen(it, it.dataset.open) : toast('真机：卡片生长进入对应二级页'); }
+  if(e.key==='Escape') backToIdle();
+});
+
+/* 初始渲染 */
+Object.keys(st).forEach(renderSel);
+</script>
+</body>
+</html>

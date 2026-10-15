@@ -1,0 +1,10 @@
+moduleKey: m3_hub
+displayName: 生活情报站
+version: "0.4.1"
+pages:
+  - today
+  - coupon
+  - preference
+network:
+  endpoint: null
+  note: "一期未启用"

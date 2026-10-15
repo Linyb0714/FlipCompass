@@ -1,0 +1,10 @@
+key: achievement
+bind:
+  achievements: $provider.games.achievements
+layout:
+  type: list
+  items: $provider.games.achievements
+  template:
+    type: progress
+    value: ${item.progress}
+    total: ${item.total}

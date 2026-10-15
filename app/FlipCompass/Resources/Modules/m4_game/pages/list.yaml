@@ -1,0 +1,12 @@
+key: list
+bind:
+  games: $provider.games.list
+layout:
+  type: grid
+  cols: 2
+  items: $provider.games.list
+  template:
+    type: card
+    title: ${item.name}
+    subtitle: ${item.best}
+    children: []

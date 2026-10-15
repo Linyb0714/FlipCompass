@@ -1,0 +1,11 @@
+key: review
+bind:
+  history: $provider.thoughts.history
+layout:
+  type: list
+  items: $provider.thoughts.history
+  template:
+    type: card
+    title: ${item.content}
+    subtitle: ${item.date}
+    children: []

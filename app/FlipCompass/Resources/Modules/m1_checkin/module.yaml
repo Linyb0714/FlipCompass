@@ -1,0 +1,12 @@
+moduleKey: m1_checkin
+displayName: 温情打卡
+version: "0.4.1"
+pages:
+  - list
+  - detail
+  - edit
+assets:
+  - ""
+network:
+  endpoint: null
+  note: "一期未启用"

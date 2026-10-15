@@ -1,0 +1,10 @@
+moduleKey: m4_game
+displayName: 益智小游戏
+version: "0.4.1"
+pages:
+  - today
+  - list
+  - achievement
+network:
+  endpoint: null
+  note: "一期未启用"

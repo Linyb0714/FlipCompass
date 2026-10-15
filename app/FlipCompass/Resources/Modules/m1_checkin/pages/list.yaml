@@ -1,0 +1,23 @@
+key: list
+bind:
+  items: $provider.checkin.todayItems
+layout:
+  type: list
+  items: $provider.checkin.todayItems
+  template:
+    type: card
+    title: ${item.title}
+    subtitle: ${item.desc}
+    children:
+      - type: text
+        value: ${item.remindTime}
+        style:
+          font: caption
+          color: orange
+      - type: button
+        label: 进入
+        action:
+          type: navigate
+          pageKey: detail
+          payload:
+            id: ${item.id}

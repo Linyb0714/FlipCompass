@@ -1,0 +1,11 @@
+key: today
+bind:
+  feeds: $provider.hub.feeds
+layout:
+  type: list
+  items: $provider.hub.feeds
+  template:
+    type: card
+    title: ${item.title}
+    subtitle: ${item.source}
+    children: []

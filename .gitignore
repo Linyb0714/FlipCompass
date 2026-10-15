@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+
+# 临时会话脚本 / 构建中间物
+.temp/
+**/.temp/
+
+# XcodeGen 生成工程（clone 后运行 `xcodegen generate` 还原）
+app/FlipCompass.xcodeproj/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+
+# Xcode 派生数据与构建产物
+DerivedData/
+build/
+
+# npm 依赖（原型 HTML 的构建依赖，不入库）
+docs/prototypes/node_modules/
+docs/node_modules/
+node_modules/
+
+# 日志与本地临时库备份（本地诊断产物）
+*.log
+default.store.bak-*

@@ -1,0 +1,16 @@
+key: detail
+layout:
+  type: vstack
+  children:
+    - type: text
+      value: ${item.title}
+      style:
+        font: headline
+    - type: text
+      value: ${item.desc}
+    - type: calendar-heatmap
+      field: $provider.checkin.heatmap
+onTap:
+  type: navigate
+  pageKey: edit
+  payload: {}

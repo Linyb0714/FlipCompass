@@ -1,0 +1,28 @@
+key: edit
+layout:
+  type: vstack
+  children:
+    - type: text-editor
+      field: title
+      placeholder: 标题
+    - type: text-editor
+      field: desc
+      placeholder: 描述
+    - type: tag-picker
+      field: remindTime
+      options:
+        - "19:00"
+        - "19:30"
+        - "20:00"
+        - "20:30"
+        - "21:00"
+        - "21:30"
+        - "22:00"
+        - 不提醒
+    - type: button
+      label: 保存
+      action:
+        type: submit
+        form: checkin
+onTap:
+  type: pop

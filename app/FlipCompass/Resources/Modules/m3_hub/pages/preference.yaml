@@ -1,0 +1,10 @@
+key: preference
+bind:
+  prefs: $provider.hub.preferences
+layout:
+  type: list
+  items: $provider.hub.preferences
+  template:
+    type: toggle
+    field: ${item.key}
+    label: ${item.label}
