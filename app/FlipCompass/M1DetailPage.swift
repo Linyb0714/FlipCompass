@@ -88,8 +88,8 @@ struct M1DetailPage: View {
 
     private var subtitle: String {
         var s = item.itemDesc.isEmpty ? "每天一次 · 坚持就好" : item.itemDesc
-        if !item.remind.isEmpty {
-            s += " · 每日 \(item.remind) 提醒"
+        if let rule = CheckInRemind.parseRule(item.remind) {
+            s += " · \(rule.text) 提醒"
         }
         return s
     }

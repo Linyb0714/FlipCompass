@@ -136,12 +136,15 @@ struct HeroOverlay<Content: View>: View {
                         .opacity(closing ? 0 : 1)
                 }
 
-                // 需求①：左边缘右滑返回（iOS 系统同款 UIScreenEdgePanGestureRecognizer——
+                // 需求①②：左右边缘内滑返回（iOS 系统同款 UIScreenEdgePanGestureRecognizer——
                 // 只识别从边缘向内起手，与内容滚动/水平控件零冲突；M1/M2/M3 所有
                 // hero 详情页经 HeroOverlay 统一获得，一处实现全局生效）
-                EdgeSwipeBack(onBack: onBack)
+                EdgeSwipeBack(onBack: onBack, edge: .left)
                     .frame(width: 24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                EdgeSwipeBack(onBack: onBack, edge: .right)
+                    .frame(width: 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
             .ignoresSafeArea()
             .allowsHitTesting(!(closing && !contentShown))
@@ -199,20 +202,23 @@ struct HeroBackButton: View {
     }
 }
 
-// MARK: - 需求① · 左边缘右滑返回（系统边缘手势包装）
-// UIScreenEdgePanGestureRecognizer 只在「从左边缘 ~20pt 向内」起手时识别，
-// 列表垂直滚动、d7 价格 slider 等内容手势完全不受影响；向内拖过 44pt
-// 即触发 onBack 原路收回（拖到位即走，贴近系统 pop 手感）。
+// MARK: - 边缘内滑返回（系统边缘手势包装 · 左右双缘）
+// UIScreenEdgePanGestureRecognizer 只在「从屏幕边缘 ~20pt 向内」起手时识别，
+// 列表垂直滚动、d7 价格 slider 等内容手势完全不受影响；
+// 左边缘右滑 / 右边缘左滑（需求② 2026-10-16）向内拖过 44pt 均触发
+// onBack 原路收回（拖到位即走，贴近系统 pop 手感）。
 
 struct EdgeSwipeBack: UIViewRepresentable {
     let onBack: () -> Void
+    /// 监听缘：.left = 左边缘右滑 · .right = 右边缘左滑（两侧各挂一条独立窄条）
+    var edge: UIRectEdge = .left
 
     func makeUIView(context: Context) -> UIView {
         let v = UIView()
         v.backgroundColor = .clear
         let rec = UIScreenEdgePanGestureRecognizer(target: context.coordinator,
                                                    action: #selector(Coordinator.handle(_:)))
-        rec.edges = .left
+        rec.edges = edge
         v.addGestureRecognizer(rec)
         return v
     }
@@ -241,7 +247,10 @@ struct EdgeSwipeBack: UIViewRepresentable {
                 // 卡屏修复②：手势完整结束才判定返回（中断 .cancelled 不触发）——
                 // 旧实现 .changed 过阈值即走，拖动被打断时返回动画起了一半，
                 // 造成「返回卡屏」；改为松手判定后中断场景页面保持原样。
-                if t.x > 44, abs(t.y) < 80 {
+                // 双缘判定（需求②）：左缘右滑 t.x > 0 / 右缘左滑 t.x < 0，向内过 44pt
+                let inwardX = t.x  // 左缘：向右为正；右缘：向左为负 —— 方向由本条 recognizer 的缘决定
+                let satisfied = abs(inwardX) > 44 && abs(t.y) < 80
+                if satisfied {
                     onBack()   // heroClosing 幂等：重复回调无副作用
                 }
             default:

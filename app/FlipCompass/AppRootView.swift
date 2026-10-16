@@ -77,6 +77,17 @@ struct AppRootView: View {
         .animation(DSToken.enterBounce, value: app.screenID)
         .task { motion.start() }
         .onDisappear { motion.stop() }
+        // 性能修复（全局迟滞 2026-10-16）：模块打开期间挂起 60Hz 传感器——
+        // 翻转导航已定稿「仅待机页响应」（红线修复），模块内持续跑纯属浪费；
+        // 60 次/秒的主队列回调 + objectWillChange 广播是列表滚动/切页/滚轮
+        // 手感迟滞的主要根因之一。回待机即恢复（静止校准重新武装，无副作用）
+        .onChange(of: app.level) { _, level in
+            if level == .module {
+                motion.stop()
+            } else {
+                motion.start()
+            }
+        }
         // DEBUG 后门：模拟器验证用（-show-m1 [-m1-page 0/1/2] / -show-m2 [-m2-page 0/1]）直达指定模块分组
         // 延迟 1s：等 IdleScreen 色卡坐标上报完成（字飞行验证需要真实点击路径的时序）
         .onAppear {

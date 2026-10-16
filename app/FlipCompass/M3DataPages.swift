@@ -19,6 +19,10 @@ struct M3RssPage: View {
     @State private var newTitle = ""
     @State private var newUrl = ""
     @State private var refreshing = false
+    @FocusState private var focusField: Field?
+
+    /// 输入焦点（键盘「完成」按钮统一收起）
+    enum Field: Hashable { case title, url }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -70,6 +74,7 @@ struct M3RssPage: View {
                                     .fill(.white.opacity(0.92)))
                                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .strokeBorder(DSToken.line, lineWidth: 1))
+                                .focused($focusField, equals: .title)
                             TextField("https://sspai.com/feed", text: $newUrl)
                                 .textFieldStyle(.plain)
                                 .keyboardType(.URL)
@@ -83,6 +88,7 @@ struct M3RssPage: View {
                                     .fill(.white.opacity(0.92)))
                                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .strokeBorder(DSToken.line, lineWidth: 1))
+                                .focused($focusField, equals: .url)
                             Button(action: addSource) {
                                 Text("添加")
                                     .font(DSToken.body(13, weight: .semibold))
@@ -138,6 +144,14 @@ struct M3RssPage: View {
             .scrollDismissesKeyboard(.interactively)
 
             HeroBackButton(title: "生活情报站", color: DSToken.m3) { onClose() }
+        }
+        // 输入键盘「完成」按钮（用户需求：点击收起键盘）
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { focusField = nil }
+                    .font(DSToken.body(16, weight: .semibold))
+            }
         }
     }
 
@@ -243,6 +257,7 @@ struct M3NearbyPage: View {
     @State private var keyword = "美食"
     @State private var locationText = ""
     @State private var locOnce = LocationOnce()
+    @FocusState private var keyFocused: Bool
 
     private let keywords = ["美食", "奶茶", "亲子", "面包", "超市", "咖啡"]
 
@@ -294,6 +309,7 @@ struct M3NearbyPage: View {
                     .font(DSToken.body(14))
                     .padding(.horizontal, 12)
                     .frame(height: 42)
+                    .focused($keyFocused)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(.white.opacity(0.95)))
@@ -404,6 +420,14 @@ struct M3NearbyPage: View {
                 }
             }
             .padding(.top, 14)
+        }
+        // 输入键盘「完成」按钮（用户需求：点击收起键盘）
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { keyFocused = false }
+                    .font(DSToken.body(16, weight: .semibold))
+            }
         }
     }
 

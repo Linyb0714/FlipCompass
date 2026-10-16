@@ -53,7 +53,7 @@ struct IdleScreen: View {
 
                 // ---- 上段：时间组（B1s 换序：时间置顶）----
                 // 用户验收：与罗盘色卡太近 → 0.205H 上移至 0.185H（约 +17~19pt 呼吸）
-                TimeGroup(weather: weather.info, weatherFailed: weather.failed)
+                    TimeGroup(weather: weather.info, weatherFailed: weather.failed, paused: sheenPaused)
                     .position(x: w / 2, y: h * 0.185)
                     .opacity(appear ? 1 : 0)
 
@@ -98,9 +98,22 @@ struct IdleScreen: View {
 private struct TimeGroup: View {
     let weather: WeatherService.Info?
     let weatherFailed: Bool
+    /// 性能修复（全局迟滞 2026-10-16）：非待机暂停每秒 tick——IdleScreen 常驻
+    /// 视图树（被模块 opaque 覆盖但照常求值），暂停后模块内零重算；
+    /// 回待机恢复走秒
+    var paused: Bool = false
+
+    /// DateFormatter 创建开销大（历史上每秒 tick 新建一个）；static 复用
+    private static let clockFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        // .animation schedule 的 paused 参数是唯一可暂停的时间线
+        // （.periodic 不支持）；minimumInterval 1s = 每秒一次，节拍同原型
+        TimelineView(.animation(minimumInterval: 1.0, paused: paused)) { context in
             let now = context.date
             VStack(spacing: 0) {
                 Text(Self.clockString(from: now))
@@ -153,11 +166,9 @@ private struct TimeGroup: View {
         return "\(comps.month!)月\(comps.day!)日 星期\(weekdays[comps.weekday! - 1])"
     }
 
-    /// 「21:47」
+    /// 「21:47」（DateFormatter static 复用——每秒新建是主线程隐形成本）
     static func clockString(from date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        Self.clockFormatter.string(from: date)
     }
 }
 

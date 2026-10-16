@@ -201,4 +201,191 @@ enum CheckInRemind {
               (0...23).contains(h), (0...59).contains(m) else { return nil }
         return (h, m)
     }
+
+    /// 规则解析（每日 / 每周多选·工作日跳假 / 每月 · 向后兼容历史格式）：
+    /// "" → nil
+    /// "HH:mm" → 每日（首版数据兼容）
+    /// "weekly|w|HH:mm" → 每周单天（第二版兼容）
+    /// "weekly|w1,w2,…|HH:mm" → 每周多天（升序 CSV）
+    /// "weekly|…|HH:mm|hol" → 每周 + 跳过法定假日（「工作日」）
+    /// "monthly|d1,d2,…|HH:mm" → 每月多日（单日沿用 "monthly|d|HH:mm" 历史格式）
+    static func parseRule(_ s: String) -> RemindRule? {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return nil }
+        if let r = parse(t) {
+            return .daily(hour: r.hour, minute: r.minute)
+        }
+        let parts = t.split(separator: "|").map(String.init)
+        guard (3...4).contains(parts.count), let hm = parse(parts[2]) else { return nil }
+        switch parts[0] {
+        case "weekly":
+            let skip: Bool
+            switch parts.count {
+            case 3:
+                skip = false
+            case 4 where parts[3] == "hol":
+                skip = true
+            default:
+                return nil   // 第 4 段只认 hol 标记
+            }
+            guard let ws = RemindRule.normalizeWeekdaysCSV(parts[1]) else { return nil }
+            return .weekly(weekdays: ws, skipHolidays: skip, hour: hm.hour, minute: hm.minute)
+        case "monthly":
+            guard parts.count == 3, let ds = RemindRule.normalizeDaysCSV(parts[1]) else { return nil }
+            return .monthly(days: ds, hour: hm.hour, minute: hm.minute)
+        default:
+            return nil
+        }
+    }
+}
+
+// MARK: - 打卡提醒规则（每日 / 每周多选 · 工作日跳假 / 每月 · 用户需求）
+
+enum RemindRule: Equatable {
+    case daily(hour: Int, minute: Int)
+    /// weekdays：1 = 周日 … 7 = 周六（Calendar 语义）· 升序去重非空
+    /// skipHolidays：命中星期若逢法定假日则当天不提醒（排期见 ChineseHoliday）
+    case weekly(weekdays: [Int], skipHolidays: Bool, hour: Int, minute: Int)
+    /// days：1 ~ 31 · 升序去重非空（多选）；当月无该日（如 31 号之于 4 月）该月自动跳过
+    case monthly(days: [Int], hour: Int, minute: Int)
+
+    /// 星期单字（index = weekday - 1）
+    static let weekdayChars = ["日", "一", "二", "三", "四", "五", "六"]
+
+    /// 「工作日」预设：周一 ~ 周五（Calendar 2~6）· 启用跳假
+    static let workdayWeekdays = [2, 3, 4, 5, 6]
+    /// 「周末」预设：周六、周日
+    static let weekendWeekdays = [1, 7]
+
+    var hour: Int {
+        switch self {
+        case .daily(let h, _), .weekly(_, _, let h, _), .monthly(_, let h, _): return h
+        }
+    }
+    var minute: Int {
+        switch self {
+        case .daily(_, let m), .weekly(_, _, _, let m), .monthly(_, _, let m): return m
+        }
+    }
+
+    /// 选中星期（非每周 → nil）
+    var weekdays: [Int]? {
+        if case .weekly(let ws, _, _, _) = self { return ws }
+        return nil
+    }
+    var skipHolidays: Bool {
+        if case .weekly(_, let skip, _, _) = self { return skip }
+        return false
+    }
+    /// 是否为「工作日」预设态（周一~五 + 跳假）
+    var isWorkdayPreset: Bool {
+        if case .weekly(let ws, true, _, _) = self { return ws == Self.workdayWeekdays }
+        return false
+    }
+
+    /// 星期集合规范化：1~7 校验 · 去重 · 升序（空 / 越界 → nil）
+    static func normalizeWeekdays(_ ws: [Int]) -> [Int]? {
+        guard !ws.isEmpty, ws.allSatisfy({ (1...7).contains($0) }) else { return nil }
+        return Array(Set(ws)).sorted()
+    }
+
+    /// CSV "2,4,6" → [2,4,6]（空段 / 非数字 / 越界 → nil）
+    static func normalizeWeekdaysCSV(_ s: String) -> [Int]? {
+        let segments = s.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        let ints = segments.compactMap { Int($0) }
+        guard segments.count == ints.count else { return nil }
+        return normalizeWeekdays(ints)
+    }
+
+    /// 日期集合规范化：1~31 校验 · 去重 · 升序（空 / 越界 → nil）
+    static func normalizeDays(_ ds: [Int]) -> [Int]? {
+        guard !ds.isEmpty, ds.allSatisfy({ (1...31).contains($0) }) else { return nil }
+        return Array(Set(ds)).sorted()
+    }
+
+    /// CSV "1,15" → [1,15]（空段 / 非数字 / 越界 → nil）
+    static func normalizeDaysCSV(_ s: String) -> [Int]? {
+        let segments = s.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+        let ints = segments.compactMap { Int($0) }
+        guard segments.count == ints.count else { return nil }
+        return normalizeDays(ints)
+    }
+
+    /// 「工作日」预设构造（周一~五 + 跳过法定假日）
+    static func workday(hour: Int, minute: Int) -> RemindRule {
+        .weekly(weekdays: workdayWeekdays, skipHolidays: true, hour: hour, minute: minute)
+    }
+
+    /// 存储编码（每日沿用旧格式「HH:mm」、每周单天沿用 "weekly|w|HH:mm" 以兼容历史数据）
+    var storage: String {
+        let hm = String(format: "%02d:%02d", hour, minute)
+        switch self {
+        case .daily:
+            return hm
+        case .weekly(let ws, let skip, _, _):
+            let csv = ws.map(String.init).joined(separator: ",")
+            return skip ? "weekly|\(csv)|\(hm)|hol" : "weekly|\(csv)|\(hm)"
+        case .monthly(let ds, _, _):
+            return "monthly|\(ds.map(String.init).joined(separator: ","))|\(hm)"
+        }
+    }
+
+    /// 展示文本（摘要行 / 详情页副题共用）
+    var text: String {
+        let hm = String(format: "%02d:%02d", hour, minute)
+        switch self {
+        case .daily:
+            return "每日 \(hm)"
+        case .weekly(let ws, let skip, _, _):
+            if ws == Self.workdayWeekdays {
+                return skip ? "工作日 \(hm)" : "每周一至五 \(hm)"
+            }
+            let days = Self.weekdaySummary(ws)
+            return skip ? "每周\(days) \(hm)（跳假日）" : "每周\(days) \(hm)"
+        case .monthly(let ds, _, _):
+            return "每月 \(Self.daySummary(ds)) 日 \(hm)"
+        }
+    }
+
+    /// 日期集合中文摘要：连续折叠「1至3」· 多段顿号分隔（单日 15 → "15"）
+    static func daySummary(_ ds: [Int]) -> String {
+        let sorted = Set(ds).sorted()
+        var segments: [(start: Int, end: Int)] = []
+        for d in sorted {
+            if let last = segments.last, last.end == d - 1 {
+                segments[segments.count - 1].end = d
+            } else {
+                segments.append((d, d))
+            }
+        }
+        return segments.map { seg -> String in
+            let len = seg.end - seg.start + 1
+            if len == 1 { return String(seg.start) }
+            if len == 2 { return "\(seg.start)、\(seg.end)" }
+            return "\(seg.start)至\(seg.end)"
+        }.joined(separator: "、")
+    }
+
+    /// 星期集合中文摘要：连续折叠「一至三」· 多段顿号分隔 · 惯用语特判「六日」
+    static func weekdaySummary(_ ws: [Int]) -> String {
+        let sorted = Set(ws).sorted()
+        // 惯用语：周六+周日（Calendar 7、1）→「六日」
+        if sorted == [1, 7] { return "六日" }
+        // 自然序折叠连续段（不跨周环绕）
+        var segments: [(start: Int, end: Int)] = []
+        for w in sorted {
+            if let last = segments.last, last.end == w - 1 {
+                segments[segments.count - 1].end = w
+            } else {
+                segments.append((w, w))
+            }
+        }
+        return segments.map { seg in
+            let len = seg.end - seg.start + 1
+            let s = weekdayChars[seg.start - 1], e = weekdayChars[seg.end - 1]
+            if len == 1 { return s }
+            if len == 2 { return "\(s)、\(e)" }
+            return "\(s)至\(e)"
+        }.joined(separator: "、")
+    }
 }

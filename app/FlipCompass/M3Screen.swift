@@ -121,6 +121,7 @@ struct M3Screen: View {
                             heroClosing = false
                             heroTarget = nil
                         }
+                        app.exitDetail()   // 红线修复：二级页关闭，恢复翻转导航
                     },
                     closing: heroClosing
                 ) {
@@ -273,6 +274,7 @@ struct M3Screen: View {
 
     private func openHero(key: String, sourceID: String, target: M3HeroTarget) {
         blankTapTask?.cancel()   // 清掉待执行的空白单击
+        app.enterDetail()        // 红线修复：二级页期间屏蔽翻转导航
         withAnimation(.easeOut(duration: 0.25)) {
             hero = HeroSession(
                 key: key,

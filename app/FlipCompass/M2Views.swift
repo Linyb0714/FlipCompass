@@ -449,6 +449,14 @@ struct M2ComposePage: View {
         .onAppear { bootstrap() }
         .onChange(of: text) { _, _ in saveDraft() }
         .onChange(of: mood) { _, _ in saveDraft() }
+        // 输入键盘「完成」按钮（用户需求：点击收起键盘）
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { focused = false }
+                    .font(DSToken.body(16, weight: .semibold))
+            }
+        }
     }
 
     // MARK: 写作页（textarea + 心情 + 收下这句 + 草稿计数）

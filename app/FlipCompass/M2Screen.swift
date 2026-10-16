@@ -127,6 +127,7 @@ struct M2Screen: View {
                             heroClosing = false
                             heroTarget = nil
                         }
+                        app.exitDetail()   // 红线修复：二级页关闭，恢复翻转导航
                     },
                     closing: heroClosing
                 ) {
@@ -245,6 +246,7 @@ struct M2Screen: View {
     /// 统一生长入口：捕获源卡几何 → 建会话 → 锁定目标页
     private func openHero(key: String, sourceID: String, target: M2HeroTarget) {
         blankTapTask?.cancel()   // 清掉待执行的空白单击
+        app.enterDetail()        // 红线修复：二级页期间屏蔽翻转导航
         withAnimation(.easeOut(duration: 0.25)) {     // MINI 随开卡淡出
             hero = HeroSession(
                 key: key,

@@ -34,8 +34,11 @@ final class MotionKit: ObservableObject {
     @Published private(set) var flipState: FlipState = .idle
     @Published private(set) var confirmedOrientation: DeviceOrientation = .faceUp
     @Published private(set) var confirmedDirection: FlipDirection? = nil   // 最近确认的翻转方向
-    @Published private(set) var currentAngle: Double = 0
-    @Published private(set) var currentAngularVelocity: Double = 0
+    // 性能修复（全局迟滞 2026-10-16）：两高频量降级为普通存储——每帧（60Hz）@Published 写入
+    // 会广播 objectWillChange 驱动订阅视图全树重 diff；App 内除调试日志外零消费方，
+    // 待机页动画已由 TimelineView 局部驱动，不需要它们参与视图更新（读时取快照即可）
+    private(set) var currentAngle: Double = 0
+    private(set) var currentAngularVelocity: Double = 0
     @Published private(set) var armed: Bool = false   // 静止已校准，可触发翻转事件
     @Published var loggingEnabled: Bool = true
 
@@ -82,6 +85,8 @@ final class MotionKit: ObservableObject {
     func start() {
         guard !isPreview else { return }
         guard manager.isDeviceMotionAvailable else { return }
+        // 幂等：重复 start 不叠加回调链
+        guard !manager.isDeviceMotionActive else { return }
         manager.deviceMotionUpdateInterval = updateInterval
         manager.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
             guard let self, let data else { return }

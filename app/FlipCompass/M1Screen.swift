@@ -117,6 +117,7 @@ struct M1Screen: View {
                         hero = nil
                         heroClosing = false
                         heroTarget = nil
+                        app.exitDetail()   // 红线修复：二级页关闭，恢复翻转导航
                     },
                     closing: heroClosing
                 ) {
@@ -163,6 +164,10 @@ struct M1Screen: View {
                let p = CommandLine.arguments.indices.contains(idx + 1) ? Int(CommandLine.arguments[idx + 1]) : nil,
                (0...2).contains(p) {
                 page = p
+            }
+            // DEBUG 后门：-m1-form 直达新建表单（heroSpots 布局稳定后生长）
+            if CommandLine.arguments.contains("-m1-form") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { openFormNew() }
             }
         }
         .onChange(of: items.count) { _, _ in
@@ -600,6 +605,7 @@ struct M1Screen: View {
     /// 统一生长入口：捕获源卡几何 → 建会话 → 锁定目标页
     private func openHero(key: String, sourceID: String, target: M1HeroTarget) {
         blankTapTask?.cancel()   // 清掉待执行的空白单击（防打开后旧 task 重复 fire）
+        app.enterDetail()        // 红线修复：二级页期间屏蔽翻转导航
         hero = HeroSession(
             key: key,
             sourceID: sourceID,
